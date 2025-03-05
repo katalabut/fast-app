@@ -10,7 +10,6 @@ import (
 
 	"github.com/katalabut/fast-app/logger"
 	"github.com/pkg/errors"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.uber.org/automaxprocs/maxprocs"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -20,22 +19,32 @@ const (
 	exitCodeOk             = 0
 	exitCodeApplicationErr = 1
 	exitCodeWatchdog       = 1
-)
 
-const (
 	defaultShutdownTimeout = time.Second * 5
 	watchdogTimeout        = defaultShutdownTimeout + time.Second*5
 )
 
-type App struct {
-	config Config
+type (
+	App struct {
+		config Config
 
-	opts options
-}
+		opts    options
+		runners []Runner
+	}
+	Runner struct {
+		service Service
+	}
+
+	Service interface {
+		Run(ctx context.Context) error
+		Shutdown(ctx context.Context) error
+	}
+)
 
 func New(config Config, opts ...Option) *App {
 	op := options{
 		version:         "",
+		stopAllOnErr:    true,
 		shutdownTimeout: defaultShutdownTimeout,
 
 		ctx: context.Background(),
@@ -52,7 +61,7 @@ func New(config Config, opts ...Option) *App {
 	}
 }
 
-func (a *App) Run(f func(context.Context) error) {
+func (a *App) Start() {
 	var (
 		config = a.config
 	)
@@ -82,44 +91,52 @@ func (a *App) Run(f func(context.Context) error) {
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
-	g.Go(
-		func() (rerr error) {
-			defer lg.Info("Shutting down")
-			defer func() {
-				// Recovering panic to log it and return error.
-				if ec := recover(); ec != nil {
-					lg.Error(
-						"Panic",
-						zap.String("panic", fmt.Sprintf("%v", ec)),
-						zap.StackSkip("stack", 1),
-					)
-					rerr = fmt.Errorf("shutting down (panic): %v", ec)
-				}
-			}()
-			if err := f(ctx); err != nil {
-				if errors.Is(err, ctx.Err()) {
-					// Parent context got cancelled, error is expected.
-					lg.Debug("Graceful shutdown")
-					return nil
-				}
-				return err
-			}
 
-			// Also shutting down metrics server to stop error group.
-			cancel()
+	for _, run := range a.runners {
+		run := run
 
-			return nil
-		},
-	)
-
-	if a.config.DebugServer.Enabled {
-		lg.Info("Starting debug server", zap.Int("port", a.config.DebugServer.Port))
+		g.Go(a.GracefulShutdown(ctx, run.service.Shutdown))
 		g.Go(
-			func() error {
-				return defaultDebugServer(ctx, a.config.DebugServer.Port)
+			func() (rerr error) {
+				defer func() {
+					// Recovering panic to log it and return error.
+					if ec := recover(); ec != nil {
+						lg.Errorw(
+							"Panic",
+							zap.String("panic", fmt.Sprintf("%v", ec)),
+							zap.StackSkip("stack", 1),
+						)
+						rerr = fmt.Errorf("shutting down (panic): %v", ec)
+
+						// Also shutting down all services on error.
+						if a.opts.stopAllOnErr {
+							cancel()
+						}
+					}
+				}()
+
+				if err := run.service.Run(ctx); err != nil {
+					if errors.Is(err, ctx.Err()) {
+						// Parent context got cancelled, error is expected.
+						lg.Debug("Graceful shutdown")
+						return nil
+					}
+					return err
+				}
+
+				return nil
 			},
 		)
 	}
+
+	// if a.config.DebugServer.Enabled {
+	// 	lg.Info("Starting debug server", zap.Int("port", a.config.DebugServer.Port))
+	// 	g.Go(
+	// 		func() error {
+	// 			return defaultDebugServer(ctx, a.config.DebugServer.Port)
+	// 		},
+	// 	)
+	// }
 
 	go func() {
 		// Guaranteed way to kill application.
@@ -139,7 +156,7 @@ func (a *App) Run(f func(context.Context) error) {
 	}()
 
 	if err := g.Wait(); err != nil {
-		lg.Error("Failed", zap.Error(err))
+		lg.Errorw("Failed", zap.Error(err))
 		os.Exit(exitCodeApplicationErr)
 	}
 
@@ -165,26 +182,11 @@ func (a *App) GracefulShutdown(ctx context.Context, f ...func(context.Context) e
 	}
 }
 
-func defaultDebugServer(ctx context.Context, port int) (err error) {
-	mux := http.NewServeMux()
-
-	mux.Handle("/metrics", promhttp.Handler())
-
-	server := http.Server{
-		Addr:        fmt.Sprintf(":%d", port),
-		ReadTimeout: 5 * time.Second,
-		IdleTimeout: 120 * time.Second,
-		Handler:     mux,
-	}
-
-	go func() {
-		<-ctx.Done()
-		err = server.Shutdown(context.Background())
-	}()
-
-	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return errors.Wrap(err, "failed to start debug server")
-	}
-
-	return
+func (a *App) Add(svc Service) *App {
+	a.runners = append(
+		a.runners, Runner{
+			service: svc,
+		},
+	)
+	return a
 }

@@ -8,6 +8,7 @@ import (
 
 type options struct {
 	version         string
+	stopAllOnErr    bool
 	shutdownTimeout time.Duration
 
 	ctx context.Context
@@ -38,6 +39,14 @@ func WithVersion(version string) Option {
 	return optionFunc(
 		func(o *options) {
 			o.version = version
+		},
+	)
+}
+
+func WithDisableStopAllOnErr() Option {
+	return optionFunc(
+		func(o *options) {
+			o.stopAllOnErr = false
 		},
 	)
 }

@@ -7,11 +7,12 @@ import (
 	app "github.com/katalabut/fast-app"
 	"github.com/katalabut/fast-app/config"
 	"github.com/katalabut/fast-app/logger"
+	"github.com/katalabut/fast-app/service"
 )
 
 type Config struct {
 	App         app.Config
-	DebugServer app.DebugServer
+	DebugServer service.DebugServer
 }
 
 type ApiService struct {
@@ -41,7 +42,7 @@ func main() {
 	apiService := NewApiService()
 
 	app.New(cfg.App).
-		Add(app.NewDefaultDebugService(cfg.DebugServer)).
+		Add(service.NewDefaultDebugService(cfg.DebugServer)).
 		Add(apiService).
 		Start()
 }

@@ -1,4 +1,4 @@
-package app
+package service
 
 import (
 	"context"
@@ -10,6 +10,10 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+type DebugServer struct {
+	Port int `default:"9090"`
+}
 
 type DefaultDebugService struct {
 	cfg    DebugServer

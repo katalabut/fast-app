@@ -40,9 +40,11 @@ FastApp is a lightweight, opinionated framework for building production-ready Go
 - **Auto-Discovery** - Automatic health check collection from services
 - **Multiple Strategies** - Flexible aggregation strategies (all-healthy, majority, weighted)
 
-### 📊 **Observability**
-- **Metrics** - Prometheus metrics endpoint
-- **Debug Server** - Built-in debug and profiling endpoints
+### 📊 **Unified Observability**
+- **Single Port** - All observability endpoints on one port (9090 by default)
+- **Metrics** - Prometheus metrics at `/metrics`
+- **Health Checks** - Kubernetes-compatible health endpoints
+- **Debug & Profiling** - Go pprof endpoints at `/debug/pprof/*`
 - **Panic Recovery** - Automatic panic handling with logging
 - **Auto MaxProcs** - Automatic GOMAXPROCS configuration
 
@@ -71,15 +73,14 @@ package main
 
 import (
     "context"
-    
+
     fastapp "github.com/katalabut/fast-app"
+    "github.com/katalabut/fast-app/config"
     "github.com/katalabut/fast-app/configloader"
-    "github.com/katalabut/fast-app/service"
 )
 
-type Config struct {
-    App         fastapp.Config
-    DebugServer service.DebugServer
+type AppConfig struct {
+    App config.App
 }
 
 type MyService struct{}
@@ -96,10 +97,9 @@ func (s *MyService) Shutdown(ctx context.Context) error {
 }
 
 func main() {
-    cfg, _ := configloader.New[Config]()
-    
+    cfg, _ := configloader.New[AppConfig]()
+
     fastapp.New(cfg.App).
-        Add(service.NewDefaultDebugService(cfg.DebugServer)).
         Add(&MyService{}).
         Start()
 }
@@ -112,8 +112,9 @@ package main
 
 import (
     "context"
-    
+
     fastapp "github.com/katalabut/fast-app"
+    "github.com/katalabut/fast-app/config"
     "github.com/katalabut/fast-app/configloader"
     "github.com/katalabut/fast-app/health"
     "github.com/katalabut/fast-app/health/checks"
@@ -168,9 +169,13 @@ FastApp provides a comprehensive health check system for monitoring application 
 
 ### HTTP Endpoints
 
+All endpoints are available on the same port (9090 by default):
+
 - `GET /health/live` - Liveness probe (always returns 200 if process is alive)
 - `GET /health/ready` - Readiness probe (returns 200 if application is ready to serve traffic)
 - `GET /health/checks` - Detailed health information for all registered checks
+- `GET /metrics` - Prometheus metrics endpoint
+- `GET /debug/pprof/*` - Go profiling endpoints (heap, goroutine, cpu, etc.)
 
 ### Built-in Health Checks
 
@@ -207,11 +212,9 @@ func (s *MyService) HealthChecks() []health.HealthChecker {
 FastApp uses struct-based configuration with automatic environment variable binding:
 
 ```go
-type Config struct {
-    App         fastapp.Config
-    DebugServer service.DebugServer
-    Health      fastapp.HealthConfig
-    Database    DatabaseConfig
+type AppConfig struct {
+    App      config.App
+    Database DatabaseConfig
 }
 
 type DatabaseConfig struct {
@@ -266,16 +269,21 @@ spec:
   containers:
   - name: app
     image: myapp:latest
+    ports:
+    - containerPort: 8080  # Your application port
+      name: http
+    - containerPort: 9090  # Observability port
+      name: observability
     livenessProbe:
       httpGet:
         path: /health/live
-        port: 8080
+        port: 9090
       initialDelaySeconds: 30
       periodSeconds: 10
     readinessProbe:
       httpGet:
         path: /health/ready
-        port: 8080
+        port: 9090
       initialDelaySeconds: 5
       periodSeconds: 5
 ```

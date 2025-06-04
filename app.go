@@ -1,3 +1,6 @@
+// Package fastapp provides a lightweight, production-ready application framework for Go.
+// It offers essential features like graceful shutdown, health checks, configuration management,
+// and observability out of the box with minimal boilerplate.
 package fastapp
 
 import (
@@ -9,8 +12,8 @@ import (
 	"time"
 
 	"github.com/katalabut/fast-app/health"
-	"github.com/katalabut/fast-app/health/server"
 	"github.com/katalabut/fast-app/logger"
+	"github.com/katalabut/fast-app/service"
 	"github.com/pkg/errors"
 	"go.uber.org/automaxprocs/maxprocs"
 	"go.uber.org/zap"
@@ -26,25 +29,41 @@ const (
 	watchdogTimeout        = defaultShutdownTimeout + time.Second*5
 )
 
-type (
-	App struct {
-		config Config
+// App represents the main application instance that manages services,
+// health checks, and graceful shutdown.
+type App struct {
+	config Config
 
-		opts          options
-		runners       []Runner
-		healthManager *health.Manager
-		healthServer  *server.Server
-	}
-	Runner struct {
-		service Service
-	}
+	opts                 options
+	runners              []Runner
+	healthManager        *health.Manager
+	observabilityService *service.ObservabilityService
+}
 
-	Service interface {
-		Run(ctx context.Context) error
-		Shutdown(ctx context.Context) error
-	}
-)
+// Runner wraps a service for execution within the application.
+type Runner struct {
+	service Service
+}
 
+// Service defines the interface that all services must implement.
+// Services are the core building blocks of a FastApp application.
+type Service interface {
+	// Run starts the service and blocks until the context is cancelled.
+	// It should return nil on graceful shutdown or an error if something goes wrong.
+	Run(ctx context.Context) error
+
+	// Shutdown gracefully stops the service within the given context timeout.
+	// It should clean up resources and return nil on successful shutdown.
+	Shutdown(ctx context.Context) error
+}
+
+// New creates a new FastApp application instance with the given configuration and options.
+// It initializes the health management system and sets up the health server endpoints.
+//
+// Example:
+//
+//	cfg := fastapp.Config{...}
+//	app := fastapp.New(cfg, fastapp.WithVersion("1.0.0"))
 func New(config Config, opts ...Option) *App {
 	op := options{
 		version:         "",
@@ -61,28 +80,32 @@ func New(config Config, opts ...Option) *App {
 
 	// Initialize health manager
 	healthManager := health.NewManager(health.ManagerConfig{
-		CacheTTL: config.Health.CacheTTL,
+		CacheTTL: config.Observability.Health.CacheTTL,
 		Strategy: &health.AllHealthyStrategy{},
 	})
 
-	// Initialize health server
-	healthServer := server.NewServer(server.Config{
-		Enabled:   config.Health.Enabled,
-		Port:      config.Health.Port,
-		LivePath:  config.Health.LivePath,
-		ReadyPath: config.Health.ReadyPath,
-		CheckPath: config.Health.CheckPath,
-		Timeout:   config.Health.Timeout,
-	}, healthManager)
+	// Initialize observability service
+	observabilityService := service.NewObservabilityService(config.Observability, healthManager)
 
 	return &App{
-		config:        config,
-		opts:          op,
-		healthManager: healthManager,
-		healthServer:  healthServer,
+		config:               config,
+		opts:                 op,
+		healthManager:        healthManager,
+		observabilityService: observabilityService,
 	}
 }
 
+// Start begins the application lifecycle, starting all registered services
+// and setting up signal handling for graceful shutdown. This method blocks
+// until the application is terminated by a signal or an error occurs.
+//
+// The method handles:
+//   - Logger initialization
+//   - GOMAXPROCS configuration (if enabled)
+//   - Health server startup
+//   - Service startup with panic recovery
+//   - Graceful shutdown coordination
+//   - Watchdog timer for forced shutdown
 func (a *App) Start() {
 	var (
 		config = a.config
@@ -91,7 +114,17 @@ func (a *App) Start() {
 	ctx, cancel := signal.NotifyContext(a.opts.ctx, os.Interrupt)
 	defer cancel()
 
-	lg, err := logger.InitLogger(config.Logger, a.opts.version)
+	// Convert new config to old logger config for compatibility
+	loggerConfig := logger.Config{
+		AppName:    config.Logger.AppName,
+		Level:      config.Logger.Level,
+		DevMode:    config.Logger.DevMode,
+		MessageKey: config.Logger.MessageKey,
+		LevelKey:   config.Logger.LevelKey,
+		TimeKey:    config.Logger.TimeKey,
+	}
+
+	lg, err := logger.InitLogger(loggerConfig, a.opts.version)
 	if err != nil {
 		panic(errors.Wrap(err, "failed to init logger"))
 	}
@@ -114,11 +147,11 @@ func (a *App) Start() {
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	// Start health server
-	if a.config.Health.Enabled {
-		g.Go(a.GracefulShutdown(ctx, a.healthServer.Shutdown))
+	// Start observability server (includes health checks, metrics, and debug endpoints)
+	if a.config.Observability.Enabled {
+		g.Go(a.GracefulShutdown(ctx, a.observabilityService.Shutdown))
 		g.Go(func() error {
-			return a.healthServer.Start(ctx)
+			return a.observabilityService.Run(ctx)
 		})
 	}
 
@@ -194,6 +227,9 @@ func (a *App) Start() {
 	os.Exit(exitCodeOk)
 }
 
+// GracefulShutdown creates a shutdown function that waits for the context to be cancelled
+// and then executes the provided shutdown functions with a timeout.
+// This is used internally to coordinate graceful shutdown of services.
 func (a *App) GracefulShutdown(ctx context.Context, f ...func(context.Context) error) func() error {
 	return func() error {
 		// Wait until g ctx canceled, then try to shut down server.
@@ -212,6 +248,16 @@ func (a *App) GracefulShutdown(ctx context.Context, f ...func(context.Context) e
 	}
 }
 
+// Add registers a service with the application. The service will be started
+// when Start() is called and will be gracefully shut down on application termination.
+//
+// If the service implements health.HealthProvider, its health checks will be
+// automatically registered with the health management system.
+//
+// Example:
+//
+//	app.Add(&MyService{})
+//	app.Add(service.NewDefaultDebugService(cfg.DebugServer))
 func (a *App) Add(svc Service) *App {
 	a.runners = append(
 		a.runners, Runner{

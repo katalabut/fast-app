@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2024-01-XX
+
+### 🚀 Major Changes
+- **Unified Observability Server**: Consolidated debug and health servers into a single observability service
+- **Centralized Configuration**: Moved all configuration structures to `/config` package
+- **Single Port Architecture**: All observability endpoints now available on one port (9090 by default)
+
+### ✨ Added
+- **New `/config` Package**: Centralized configuration structures for better organization
+- **ObservabilityService**: Unified service providing metrics, health checks, and debug endpoints
+- **Enhanced Documentation**: Added comprehensive Go doc comments for all exported types and functions
+- **Migration Guide**: Detailed guide for upgrading from v0.1.x to v0.2.x
+- **Configuration Examples**: YAML configuration examples in `/example` directory
+
+### 🔄 Changed
+- **Endpoint Consolidation**:
+  - Health endpoints moved from `:8080/health/*` to `:9090/health/*`
+  - Metrics endpoint remains at `:9090/metrics`
+  - Debug endpoints remain at `:9090/debug/pprof/*`
+  - **Port 8080 is now free for your main application**
+- **Configuration Structure**:
+  - `fastapp.Config` → `config.App` (with backward compatibility alias)
+  - `service.DebugServer` configuration no longer needed
+  - All observability settings centralized in `config.Observability`
+
+### 🗑️ Removed
+- `service.DebugServer` configuration (replaced by unified observability config)
+- `service.NewDefaultDebugService()` (observability service is now built-in)
+- Separate debug server (consolidated into observability service)
+
+### 💥 Breaking Changes
+- Removed separate debug server configuration
+- Changed default port layout (single port instead of dual ports)
+- Moved configuration types to new package structure
+
+### 🐛 Fixed
+- Improved resource usage by eliminating duplicate HTTP servers
+- Better error handling in observability endpoints
+- Enhanced configuration validation
+
+### 📚 Documentation
+- Added comprehensive English documentation for all packages
+- Enhanced README with new architecture examples
+- Added migration guide for existing users
+- Improved Go doc comments for better `go doc` experience
+
 ## [Unreleased]
 
 ### Added

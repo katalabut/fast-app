@@ -1,3 +1,6 @@
+// Package logger provides structured logging capabilities using Zap.
+// It offers both global logger functions and context-aware logging
+// with support for development and production configurations.
 package logger
 
 import (
@@ -10,15 +13,22 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// Config contains configuration for the logger.
 type Config struct {
+	// AppName is included in all log entries to identify the application
 	AppName string
 
-	Level   string `default:"info"`
-	DevMode bool   `default:"false"`
+	// Level sets the minimum log level (debug, info, warn, error, fatal)
+	Level string `default:"info"`
+	// DevMode enables development-friendly console output with colors
+	DevMode bool `default:"false"`
 
+	// MessageKey is the JSON key for the log message
 	MessageKey string `default:"message"`
-	LevelKey   string `default:"severity"`
-	TimeKey    string `default:"timestamp"`
+	// LevelKey is the JSON key for the log level
+	LevelKey string `default:"severity"`
+	// TimeKey is the JSON key for the timestamp
+	TimeKey string `default:"timestamp"`
 }
 
 var (
@@ -43,6 +53,9 @@ func init() {
 	SetLogger(New(level, defaultCfg))
 }
 
+// InitLogger initializes the global logger with the given configuration and version.
+// This should be called early in the application startup process.
+// The version will be included in all log entries.
 func InitLogger(cfg Config, version string) (*zap.SugaredLogger, error) {
 	globalVersion = version
 
@@ -122,6 +135,7 @@ func SetLogger(l *zap.SugaredLogger) {
 	global = l
 }
 
+// Debug logs a debug message using the logger from context.
 func Debug(ctx context.Context, args ...interface{}) {
 	FromContext(ctx).Debug(args...)
 }
@@ -134,6 +148,7 @@ func DebugKV(ctx context.Context, message string, kvs ...interface{}) {
 	FromContext(ctx).Debugw(message, kvs...)
 }
 
+// Info logs an info message using the logger from context.
 func Info(ctx context.Context, args ...interface{}) {
 	FromContext(ctx).Info(args...)
 }
@@ -158,6 +173,7 @@ func WarnKV(ctx context.Context, message string, kvs ...interface{}) {
 	FromContext(ctx).Warnw(message, kvs...)
 }
 
+// Error logs an error message using the logger from context.
 func Error(ctx context.Context, args ...interface{}) {
 	FromContext(ctx).Error(args...)
 }

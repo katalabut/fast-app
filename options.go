@@ -35,6 +35,8 @@ func WithContext(ctx context.Context) Option {
 	)
 }
 
+// WithVersion sets the application version for logging and metrics.
+// The version is included in log output and can be used for observability.
 func WithVersion(version string) Option {
 	return optionFunc(
 		func(o *options) {
@@ -43,10 +45,24 @@ func WithVersion(version string) Option {
 	)
 }
 
+// WithDisableStopAllOnErr disables the default behavior of stopping all services
+// when one service encounters an error. By default, if any service fails,
+// all services are gracefully shut down.
 func WithDisableStopAllOnErr() Option {
 	return optionFunc(
 		func(o *options) {
 			o.stopAllOnErr = false
+		},
+	)
+}
+
+// WithShutdownTimeout sets the maximum time to wait for services to shut down gracefully.
+// If services don't shut down within this timeout, the application will be forcefully terminated.
+// Default timeout is 5 seconds.
+func WithShutdownTimeout(timeout time.Duration) Option {
+	return optionFunc(
+		func(o *options) {
+			o.shutdownTimeout = timeout
 		},
 	)
 }

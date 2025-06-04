@@ -5,16 +5,15 @@ import (
 	"time"
 
 	fastapp "github.com/katalabut/fast-app"
+	"github.com/katalabut/fast-app/config"
 	"github.com/katalabut/fast-app/configloader"
 	"github.com/katalabut/fast-app/health"
 	"github.com/katalabut/fast-app/health/checks"
 	"github.com/katalabut/fast-app/logger"
-	"github.com/katalabut/fast-app/service"
 )
 
-type Config struct {
-	App         fastapp.Config
-	DebugServer service.DebugServer
+type AppConfig struct {
+	App config.App
 }
 
 type SimpleService struct {
@@ -30,16 +29,16 @@ func NewSimpleService(name string) *SimpleService {
 
 func (s *SimpleService) Run(ctx context.Context) error {
 	logger.Info(ctx, "Service starting", "service", s.name)
-	
+
 	// Simulate initialization time
 	time.Sleep(2 * time.Second)
 	s.SetReady(true)
 	logger.Info(ctx, "Service is ready", "service", s.name)
-	
+
 	// Simulate periodic work
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ticker.C:
@@ -92,7 +91,7 @@ func (s *SimpleService) IsReady() bool {
 }
 
 func main() {
-	cfg, err := configloader.New[Config]()
+	cfg, err := configloader.New[AppConfig]()
 	if err != nil {
 		logger.Fatal(context.Background(), "failed to load config:", err)
 	}
@@ -122,20 +121,20 @@ func main() {
 	// Create application
 	app := fastapp.New(cfg.App).
 		WithHealthChecks(globalChecks...).
-		Add(service.NewDefaultDebugService(cfg.DebugServer)).
 		Add(apiService).
 		Add(workerService).
 		Add(schedulerService)
 
 	// Set application as ready
 	app.SetReady(true)
-	
-	logger.Info(context.Background(), "🚀 Starting FastApp with Health Checks")
-	logger.Info(context.Background(), "📊 Health endpoints:")
-	logger.Info(context.Background(), "   • Liveness:  http://localhost:8080/health/live")
-	logger.Info(context.Background(), "   • Readiness: http://localhost:8080/health/ready") 
-	logger.Info(context.Background(), "   • Detailed:  http://localhost:8080/health/checks")
-	logger.Info(context.Background(), "📈 Metrics:     http://localhost:9090/metrics")
-	
+
+	logger.Info(context.Background(), "🚀 Starting FastApp with Unified Observability")
+	logger.Info(context.Background(), "📊 All endpoints available on port 9090:")
+	logger.Info(context.Background(), "   • Liveness:  http://localhost:9090/health/live")
+	logger.Info(context.Background(), "   • Readiness: http://localhost:9090/health/ready")
+	logger.Info(context.Background(), "   • Detailed:  http://localhost:9090/health/checks")
+	logger.Info(context.Background(), "   • Metrics:   http://localhost:9090/metrics")
+	logger.Info(context.Background(), "   • Profiling: http://localhost:9090/debug/pprof/")
+
 	app.Start()
 }

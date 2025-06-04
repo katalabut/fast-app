@@ -1,0 +1,40 @@
+# FastApp Configuration Example
+# This file demonstrates the centralized configuration structure
+
+# Logger configuration
+logger:
+  app_name: "my-fastapp"
+  level: "info"
+  dev_mode: false
+  message_key: "message"
+  level_key: "severity"
+  time_key: "timestamp"
+
+# Automatic GOMAXPROCS configuration
+auto_max_procs:
+  enabled: true
+  min: 1
+
+# Unified observability server configuration
+observability:
+  enabled: true
+  port: 9090
+  
+  # Prometheus metrics
+  metrics:
+    enabled: true
+    path: "/metrics"
+  
+  # Health check endpoints
+  health:
+    enabled: true
+    live_path: "/health/live"
+    ready_path: "/health/ready"
+    check_path: "/health/checks"
+    timeout: "30s"
+    cache_ttl: "5s"
+  
+  # Debug and profiling endpoints
+  debug:
+    enabled: true
+    path_prefix: "/debug"

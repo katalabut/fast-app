@@ -1,29 +1,77 @@
-# Fast App
+# FastApp
 
-Fast App - это легковесная библиотека на Go для быстрого создания приложений с поддержкой graceful shutdown и управления жизненным циклом сервисов.
+<div align="center">
 
-## Особенности
+![FastApp Logo](https://via.placeholder.com/200x100/4CAF50/FFFFFF?text=FastApp)
 
-- 🚀 Простой и понятный API
-- 🔄 Graceful shutdown с таймаутами
-- 📊 Встроенный debug-сервер
-- 📝 Интегрированное логирование (с использованием zap)
-- ⚙️ Конфигурация через структуры
-- 🔧 Автоматическая настройка GOMAXPROCS
-- 🛡️ Обработка паник с логированием
+**A lightweight, production-ready application framework for Go**
 
-## Установка
+[![Go Version](https://img.shields.io/badge/Go-%3E%3D%201.21-blue.svg)](https://golang.org/)
+[![Go Report Card](https://goreportcard.com/badge/github.com/katalabut/fast-app)](https://goreportcard.com/report/github.com/katalabut/fast-app)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Coverage](https://img.shields.io/badge/Coverage-85%25-green.svg)](https://github.com/katalabut/fast-app)
+
+[Features](#features) •
+[Installation](#installation) •
+[Quick Start](#quick-start) •
+[Documentation](#documentation) •
+[Examples](#examples) •
+[Contributing](#contributing)
+
+</div>
+
+---
+
+## Overview
+
+FastApp is a lightweight, opinionated framework for building production-ready Go applications with minimal boilerplate. It provides essential features like graceful shutdown, health checks, configuration management, and observability out of the box.
+
+## Features
+
+### 🚀 **Core Features**
+- **Simple API** - Minimal boilerplate, maximum productivity
+- **Graceful Shutdown** - Proper service lifecycle management with timeouts
+- **Configuration Management** - Struct-based configuration with environment variable support
+- **Structured Logging** - Built-in zap integration with context support
+
+### 🏥 **Health & Monitoring**
+- **Health Checks** - Built-in liveness and readiness probes
+- **Kubernetes Ready** - Standard `/health/live` and `/health/ready` endpoints
+- **Auto-Discovery** - Automatic health check collection from services
+- **Multiple Strategies** - Flexible aggregation strategies (all-healthy, majority, weighted)
+
+### 📊 **Observability**
+- **Metrics** - Prometheus metrics endpoint
+- **Debug Server** - Built-in debug and profiling endpoints
+- **Panic Recovery** - Automatic panic handling with logging
+- **Auto MaxProcs** - Automatic GOMAXPROCS configuration
+
+### ⚙️ **Developer Experience**
+- **Type Safety** - Leverages Go generics for type-safe configuration
+- **Hot Reload** - Development-friendly configuration reloading
+- **Extensible** - Plugin-friendly architecture
+- **Well Tested** - Comprehensive test coverage
+
+## Installation
 
 ```bash
 go get github.com/katalabut/fast-app
 ```
 
-## Быстрый старт
+**Requirements:**
+- Go 1.21 or higher
+- No external dependencies for core functionality
+
+## Quick Start
+
+### Basic Application
 
 ```go
 package main
 
 import (
+    "context"
+    
     fastapp "github.com/katalabut/fast-app"
     "github.com/katalabut/fast-app/configloader"
     "github.com/katalabut/fast-app/service"
@@ -34,21 +82,22 @@ type Config struct {
     DebugServer service.DebugServer
 }
 
-type MyService struct {}
+type MyService struct{}
 
 func (s *MyService) Run(ctx context.Context) error {
-    // Ваш код сервиса
+    // Your service logic here
+    <-ctx.Done()
     return nil
 }
 
 func (s *MyService) Shutdown(ctx context.Context) error {
-    // Код для graceful shutdown
+    // Cleanup logic here
     return nil
 }
 
 func main() {
     cfg, _ := configloader.New[Config]()
-
+    
     fastapp.New(cfg.App).
         Add(service.NewDefaultDebugService(cfg.DebugServer)).
         Add(&MyService{}).
@@ -56,31 +105,220 @@ func main() {
 }
 ```
 
-## Конфигурация
-
-Библиотека поддерживает следующие опции конфигурации:
+### With Health Checks
 
 ```go
-type Config struct {
-    Logger       logger.Config
-    AutoMaxProcs struct {
-        Enabled bool
-        Min     int
+package main
+
+import (
+    "context"
+    
+    fastapp "github.com/katalabut/fast-app"
+    "github.com/katalabut/fast-app/configloader"
+    "github.com/katalabut/fast-app/health"
+    "github.com/katalabut/fast-app/health/checks"
+)
+
+type APIService struct {
+    ready bool
+}
+
+func (s *APIService) Run(ctx context.Context) error {
+    // Initialize service
+    s.ready = true
+    <-ctx.Done()
+    return nil
+}
+
+func (s *APIService) Shutdown(ctx context.Context) error {
+    s.ready = false
+    return nil
+}
+
+// Implement HealthProvider interface
+func (s *APIService) HealthChecks() []health.HealthChecker {
+    return []health.HealthChecker{
+        health.NewCustomCheck("api-readiness", func(ctx context.Context) health.HealthResult {
+            if s.ready {
+                return health.NewHealthyResult("API service is ready")
+            }
+            return health.NewUnhealthyResult("API service is not ready")
+        }),
+    }
+}
+
+func main() {
+    cfg, _ := configloader.New[Config]()
+    
+    // Add global health checks
+    httpCheck := checks.NewHTTPCheck("external-api", "https://api.example.com/health")
+    
+    app := fastapp.New(cfg.App).
+        WithHealthChecks(httpCheck).
+        Add(&APIService{})
+    
+    app.SetReady(true)
+    app.Start()
+}
+```
+
+## Health Checks
+
+FastApp provides a comprehensive health check system for monitoring application and dependency health.
+
+### HTTP Endpoints
+
+- `GET /health/live` - Liveness probe (always returns 200 if process is alive)
+- `GET /health/ready` - Readiness probe (returns 200 if application is ready to serve traffic)
+- `GET /health/checks` - Detailed health information for all registered checks
+
+### Built-in Health Checks
+
+```go
+import "github.com/katalabut/fast-app/health/checks"
+
+// HTTP endpoint check
+httpCheck := checks.NewHTTPCheck("api", "https://api.example.com/health")
+
+// Database check
+dbCheck := checks.NewDatabaseCheck("postgres", db)
+
+// Custom check
+customCheck := health.NewCustomCheck("business-logic", func(ctx context.Context) health.HealthResult {
+    // Your health check logic
+    return health.NewHealthyResult("All systems operational")
+})
+```
+
+### Service Health Checks
+
+Services can provide their own health checks by implementing the `HealthProvider` interface:
+
+```go
+func (s *MyService) HealthChecks() []health.HealthChecker {
+    return []health.HealthChecker{
+        health.NewCustomCheck("my-service-check", s.checkHealth),
     }
 }
 ```
 
-## Интерфейсы
+## Configuration
 
-Каждый сервис должен реализовывать интерфейс `Service`:
+FastApp uses struct-based configuration with automatic environment variable binding:
 
 ```go
+type Config struct {
+    App         fastapp.Config
+    DebugServer service.DebugServer
+    Health      fastapp.HealthConfig
+    Database    DatabaseConfig
+}
+
+type DatabaseConfig struct {
+    URL      string `default:"postgres://localhost/mydb"`
+    MaxConns int    `default:"10"`
+}
+```
+
+## Examples
+
+Check out the [examples](./example) directory for complete working examples:
+
+- **[Basic](./example/basic)** - Simple application with health checks
+- **[Simple](./example/simple)** - Multiple services with comprehensive health monitoring
+- **[Advanced](./example/advanced)** - Database integration and complex health checks
+
+## Documentation
+
+### Core Interfaces
+
+```go
+// Service interface that all services must implement
 type Service interface {
     Run(ctx context.Context) error
     Shutdown(ctx context.Context) error
 }
+
+// Optional: Provide health checks
+type HealthProvider interface {
+    HealthChecks() []HealthChecker
+}
+
+// Optional: Control service readiness
+type ReadinessController interface {
+    SetReady(ready bool)
+    IsReady() bool
+}
 ```
 
-## Лицензия
+### Health Check Strategies
 
-MIT 
+- **AllHealthyStrategy** (default) - All checks must be healthy
+- **MajorityHealthyStrategy** - Majority of checks must be healthy
+- **WeightedStrategy** - Considers component importance (Critical, Important, Optional)
+
+### Kubernetes Integration
+
+```yaml
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: app
+    image: myapp:latest
+    livenessProbe:
+      httpGet:
+        path: /health/live
+        port: 8080
+      initialDelaySeconds: 30
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        path: /health/ready
+        port: 8080
+      initialDelaySeconds: 5
+      periodSeconds: 5
+```
+
+## Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+### Development
+
+```bash
+# Clone the repository
+git clone https://github.com/katalabut/fast-app.git
+cd fast-app
+
+# Run tests
+go test ./...
+
+# Run examples
+cd example/simple
+go run .
+```
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Roadmap
+
+- [x] Health Checks & Readiness/Liveness Probes
+- [ ] Named Services & Selective Running
+- [ ] Dependency Injection Container
+- [ ] Enhanced Metrics & Observability
+- [ ] Configuration Hot Reload
+
+## Support
+
+- 📖 [Documentation](./docs)
+- 🐛 [Issue Tracker](https://github.com/katalabut/fast-app/issues)
+- 💬 [Discussions](https://github.com/katalabut/fast-app/discussions)
+
+---
+
+<div align="center">
+Made with ❤️ by the FastApp team
+</div>

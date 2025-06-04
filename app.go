@@ -8,6 +8,8 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/katalabut/fast-app/health"
+	"github.com/katalabut/fast-app/health/server"
 	"github.com/katalabut/fast-app/logger"
 	"github.com/pkg/errors"
 	"go.uber.org/automaxprocs/maxprocs"
@@ -28,8 +30,10 @@ type (
 	App struct {
 		config Config
 
-		opts    options
-		runners []Runner
+		opts          options
+		runners       []Runner
+		healthManager *health.Manager
+		healthServer  *server.Server
 	}
 	Runner struct {
 		service Service
@@ -55,9 +59,27 @@ func New(config Config, opts ...Option) *App {
 		o.apply(&op)
 	}
 
+	// Initialize health manager
+	healthManager := health.NewManager(health.ManagerConfig{
+		CacheTTL: config.Health.CacheTTL,
+		Strategy: &health.AllHealthyStrategy{},
+	})
+
+	// Initialize health server
+	healthServer := server.NewServer(server.Config{
+		Enabled:   config.Health.Enabled,
+		Port:      config.Health.Port,
+		LivePath:  config.Health.LivePath,
+		ReadyPath: config.Health.ReadyPath,
+		CheckPath: config.Health.CheckPath,
+		Timeout:   config.Health.Timeout,
+	}, healthManager)
+
 	return &App{
-		config: config,
-		opts:   op,
+		config:        config,
+		opts:          op,
+		healthManager: healthManager,
+		healthServer:  healthServer,
 	}
 }
 
@@ -91,6 +113,14 @@ func (a *App) Start() {
 	}
 
 	g, ctx := errgroup.WithContext(ctx)
+
+	// Start health server
+	if a.config.Health.Enabled {
+		g.Go(a.GracefulShutdown(ctx, a.healthServer.Shutdown))
+		g.Go(func() error {
+			return a.healthServer.Start(ctx)
+		})
+	}
 
 	for _, run := range a.runners {
 		run := run
@@ -188,5 +218,33 @@ func (a *App) Add(svc Service) *App {
 			service: svc,
 		},
 	)
+
+	// Check if service provides health checks
+	if healthProvider, ok := svc.(health.HealthProvider); ok {
+		healthChecks := healthProvider.HealthChecks()
+		a.healthManager.RegisterCheckers(healthChecks)
+		logger.Debug(context.Background(), "Registered health checks from service",
+			"service_type", fmt.Sprintf("%T", svc),
+			"checks_count", len(healthChecks))
+	}
+
 	return a
+}
+
+// WithHealthChecks adds global health checks to the application
+func (a *App) WithHealthChecks(checkers ...health.HealthChecker) *App {
+	a.healthManager.RegisterCheckers(checkers)
+	logger.Debug(context.Background(), "Registered global health checks",
+		"checks_count", len(checkers))
+	return a
+}
+
+// SetReady sets the application readiness state
+func (a *App) SetReady(ready bool) {
+	a.healthManager.SetReady(ready)
+}
+
+// IsReady returns the application readiness state
+func (a *App) IsReady() bool {
+	return a.healthManager.IsReady()
 }

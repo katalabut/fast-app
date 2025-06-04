@@ -4,14 +4,14 @@ import (
 	"context"
 	"time"
 
-	app "github.com/katalabut/fast-app"
-	"github.com/katalabut/fast-app/config"
+	fastapp "github.com/katalabut/fast-app"
+	"github.com/katalabut/fast-app/configloader"
 	"github.com/katalabut/fast-app/logger"
 	"github.com/katalabut/fast-app/service"
 )
 
 type Config struct {
-	App         app.Config
+	App         fastapp.Config
 	DebugServer service.DebugServer
 }
 
@@ -34,14 +34,14 @@ func (s *ApiService) Shutdown(ctx context.Context) error {
 }
 
 func main() {
-	cfg, err := config.New[Config]()
+	cfg, err := configloader.New[Config]()
 	if err != nil {
 		logger.Fatal(context.Background(), "failed to load config:", err)
 	}
 
 	apiService := NewApiService()
 
-	app.New(cfg.App).
+	fastapp.New(cfg.App).
 		Add(service.NewDefaultDebugService(cfg.DebugServer)).
 		Add(apiService).
 		Start()

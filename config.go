@@ -1,4 +1,4 @@
-package app
+package fastapp
 
 import "github.com/katalabut/fast-app/logger"
 
@@ -10,8 +10,5 @@ type (
 			Enabled bool
 			Min     int
 		}
-	}
-	DebugServer struct {
-		Port int
 	}
 )

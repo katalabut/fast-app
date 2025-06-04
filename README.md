@@ -24,13 +24,14 @@ go get github.com/katalabut/fast-app
 package main
 
 import (
-    app "github.com/katalabut/fast-app"
-    "github.com/katalabut/fast-app/config"
+    fastapp "github.com/katalabut/fast-app"
+    "github.com/katalabut/fast-app/configloader"
+    "github.com/katalabut/fast-app/service"
 )
 
 type Config struct {
-    App         app.Config
-    DebugServer app.DebugServer
+    App         fastapp.Config
+    DebugServer service.DebugServer
 }
 
 type MyService struct {}
@@ -46,10 +47,10 @@ func (s *MyService) Shutdown(ctx context.Context) error {
 }
 
 func main() {
-    cfg, _ := config.New[Config]()
-    
-    app.New(cfg.App).
-        Add(app.NewDefaultDebugService(cfg.DebugServer)).
+    cfg, _ := configloader.New[Config]()
+
+    fastapp.New(cfg.App).
+        Add(service.NewDefaultDebugService(cfg.DebugServer)).
         Add(&MyService{}).
         Start()
 }

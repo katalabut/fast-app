@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![FastApp Logo](https://via.placeholder.com/200x100/4CAF50/FFFFFF?text=FastApp)
+![FastApp Logo](./assets/logo.jpeg)
 
 **A lightweight, production-ready application framework for Go**
 

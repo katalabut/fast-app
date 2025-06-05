@@ -1,0 +1,35 @@
+# Metrics Example Configuration
+
+App:
+  Logger:
+    AppName: "metrics-demo"
+    Level: "info"  # Set to "debug" to see detailed metric updates
+    DevMode: true
+    MessageKey: "message"
+    LevelKey: "level"
+    TimeKey: "timestamp"
+
+  AutoMaxProcs:
+    Enabled: true
+    Min: 1
+
+  Observability:
+    Enabled: true
+    Port: 9090
+
+    # Prometheus metrics configuration
+    Metrics:
+      Enabled: true
+      Path: "/metrics"
+
+    Health:
+      Enabled: true
+      LivePath: "/health/live"
+      ReadyPath: "/health/ready"
+      CheckPath: "/health/checks"
+      Timeout: "30s"
+      CacheTTL: "5s"
+
+    Debug:
+      Enabled: true
+      PathPrefix: "/debug"

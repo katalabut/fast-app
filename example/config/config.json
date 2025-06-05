@@ -1,0 +1,75 @@
+{
+  "App": {
+    "Logger": {
+      "AppName": "config-demo-json",
+      "Level": "debug",
+      "DevMode": false,
+      "MessageKey": "msg",
+      "LevelKey": "severity",
+      "TimeKey": "ts"
+    },
+    "AutoMaxProcs": {
+      "Enabled": true,
+      "Min": 2
+    },
+    "Observability": {
+      "Enabled": true,
+      "Port": 9091,
+      "Metrics": {
+        "Enabled": true,
+        "Path": "/metrics"
+      },
+      "Health": {
+        "Enabled": true,
+        "LivePath": "/health/live",
+        "ReadyPath": "/health/ready",
+        "CheckPath": "/health/checks",
+        "Timeout": "45s",
+        "CacheTTL": "10s"
+      },
+      "Debug": {
+        "Enabled": true,
+        "PathPrefix": "/debug"
+      }
+    }
+  },
+  "Database": {
+    "URL": "postgres://user:password@db.example.com:5432/proddb?sslmode=require",
+    "MaxConnections": 50,
+    "MaxIdleTime": "30m",
+    "ConnectTimeout": "15s",
+    "QueryTimeout": "60s",
+    "EnableLogging": true,
+    "MigrationsPath": "/app/migrations"
+  },
+  "Redis": {
+    "Address": "redis.example.com:6379",
+    "Password": "redis-password",
+    "Database": 1,
+    "PoolSize": 20,
+    "DialTimeout": "10s",
+    "ReadTimeout": "5s",
+    "Enabled": true
+  },
+  "API": {
+    "BaseURL": "https://prod-api.example.com",
+    "Timeout": "60s",
+    "RetryAttempts": 5,
+    "RetryDelay": "2s",
+    "APIKey": "prod-api-key-12345",
+    "Headers": {
+      "User-Agent": "ConfigDemo/1.0-prod",
+      "Accept": "application/json",
+      "X-Environment": "production"
+    },
+    "RateLimit": 1000
+  },
+  "Features": {
+    "EnableNewUI": true,
+    "EnableBetaAPI": true,
+    "EnableCaching": true,
+    "EnableMetrics": true,
+    "MaxFileSize": 52428800,
+    "MaintenanceMode": false
+  }
+}

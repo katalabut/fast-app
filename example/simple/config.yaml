@@ -1,0 +1,42 @@
+# FastApp Configuration Example
+# This file demonstrates the centralized configuration structure
+
+# App configuration - this maps to the "App" field in AppConfig struct
+App:
+  # Logger configuration for structured logging
+  Logger:
+    AppName: "my-fastapp"
+    Level: "info"
+    DevMode: true
+    MessageKey: "message"
+    LevelKey: "severity"
+    TimeKey: "timestamp"
+
+  # Automatic GOMAXPROCS configuration
+  AutoMaxProcs:
+    Enabled: true
+    Min: 1
+
+  # Unified observability server configuration
+  Observability:
+    Enabled: true
+    Port: 9090
+
+    # Prometheus metrics
+    Metrics:
+      Enabled: true
+      Path: "/metrics"
+
+    # Health check endpoints
+    Health:
+      Enabled: true
+      LivePath: "/health/live"
+      ReadyPath: "/health/ready"
+      CheckPath: "/health/checks"
+      Timeout: "30s"
+      CacheTTL: "5s"
+
+    # Debug and profiling endpoints
+    Debug:
+      Enabled: true
+      PathPrefix: "/debug"

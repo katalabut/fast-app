@@ -59,26 +59,30 @@ func (s *SimpleService) Shutdown(ctx context.Context) error {
 // HealthChecks implements health.HealthProvider
 func (s *SimpleService) HealthChecks() []health.HealthChecker {
 	return []health.HealthChecker{
-		health.NewCustomCheck(s.name+"-readiness", func(ctx context.Context) health.HealthResult {
-			if s.IsReady() {
-				return health.NewHealthyResult("Service is ready").
-					WithDetails("service_name", s.name).
-					WithDetails("uptime", time.Since(time.Now().Add(-10*time.Second)).String())
-			}
-			return health.NewUnhealthyResult("Service is not ready").
-				WithDetails("service_name", s.name)
-		}),
-		health.NewCustomCheck(s.name+"-memory", func(ctx context.Context) health.HealthResult {
-			// Simulate memory check
-			memUsage := 45.6 // MB
-			if memUsage > 100 {
-				return health.NewDegradedResult("High memory usage").
-					WithDetails("memory_mb", memUsage).
-					WithDetails("threshold_mb", 100)
-			}
-			return health.NewHealthyResult("Memory usage normal").
-				WithDetails("memory_mb", memUsage)
-		}),
+		health.NewCustomCheck(
+			s.name+"-readiness", func(ctx context.Context) health.HealthResult {
+				if s.IsReady() {
+					return health.NewHealthyResult("Service is ready").
+						WithDetails("service_name", s.name).
+						WithDetails("uptime", time.Since(time.Now().Add(-10*time.Second)).String())
+				}
+				return health.NewUnhealthyResult("Service is not ready").
+					WithDetails("service_name", s.name)
+			},
+		),
+		health.NewCustomCheck(
+			s.name+"-memory", func(ctx context.Context) health.HealthResult {
+				// Simulate memory check
+				memUsage := 45.6 // MB
+				if memUsage > 100 {
+					return health.NewDegradedResult("High memory usage").
+						WithDetails("memory_mb", memUsage).
+						WithDetails("threshold_mb", 100)
+				}
+				return health.NewHealthyResult("Memory usage normal").
+					WithDetails("memory_mb", memUsage)
+			},
+		),
 	}
 }
 
@@ -91,7 +95,7 @@ func (s *SimpleService) IsReady() bool {
 }
 
 func main() {
-	cfg, err := configloader.New[AppConfig]()
+	cfg, err := configloader.New[AppConfig](configloader.WithFile("../config.yaml"))
 	if err != nil {
 		logger.Fatal(context.Background(), "failed to load config:", err)
 	}
@@ -105,17 +109,19 @@ func main() {
 	globalChecks := []health.HealthChecker{
 		checks.NewHTTPCheck("httpbin-200", "https://httpbin.org/status/200"),
 		checks.NewHTTPCheck("httpbin-delay", "https://httpbin.org/delay/1"),
-		health.NewCustomCheck("system-load", func(ctx context.Context) health.HealthResult {
-			// Simulate system load check
-			load := 0.75
-			if load > 0.9 {
-				return health.NewDegradedResult("High system load").
-					WithDetails("load", load).
-					WithDetails("threshold", 0.9)
-			}
-			return health.NewHealthyResult("System load normal").
-				WithDetails("load", load)
-		}),
+		health.NewCustomCheck(
+			"system-load", func(ctx context.Context) health.HealthResult {
+				// Simulate system load check
+				load := 0.75
+				if load > 0.9 {
+					return health.NewDegradedResult("High system load").
+						WithDetails("load", load).
+						WithDetails("threshold", 0.9)
+				}
+				return health.NewHealthyResult("System load normal").
+					WithDetails("load", load)
+			},
+		),
 	}
 
 	// Create application

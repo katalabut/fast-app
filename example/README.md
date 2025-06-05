@@ -4,17 +4,99 @@ This directory contains complete working examples demonstrating various FastApp 
 
 ## Examples Overview
 
-### [Basic](./basic) - Simple Application
-A minimal FastApp application demonstrating:
-- Basic service implementation
-- Health checks integration
-- Configuration management
-- Graceful shutdown
+### [Complete](./complete/) - 🌟 **RECOMMENDED** Production-Ready Application
+**START HERE** - Comprehensive example showcasing ALL FastApp capabilities in a cohesive, production-ready application.
+
+**Run:**
+```bash
+cd complete
+go run main.go
+```
+
+**Features:**
+- Complete configuration management (YAML/JSON + env vars)
+- Structured logging with all patterns
+- Comprehensive Prometheus metrics
+- Full health check implementation
+- Service lifecycle management
+- Business logic simulation
+- Production deployment patterns
+
+### [Logger](./logger/) - Logging Capabilities
+Demonstrates comprehensive logging patterns and best practices.
+
+**Run:**
+```bash
+cd logger
+go run main.go
+```
+
+**Features:**
+- Multiple log levels (debug, info, warn, error, fatal)
+- Structured logging with key-value pairs
+- Context-aware logging with field propagation
+- Development vs production logging modes
+- Error logging best practices
+
+### [Config](./config/) - Configuration Management
+Shows configuration management patterns including file loading, environment variables, and validation.
+
+**Run:**
+```bash
+cd config
+go run main.go
+```
+
+**Features:**
+- YAML/JSON configuration files
+- Environment variable override
+- Type-safe configuration with struct tags
+- Configuration validation
+- Environment-specific settings
+- Feature flags and business configuration
+
+### [Metrics](./metrics/) - Prometheus Metrics
+Demonstrates Prometheus metrics integration with various metric types and monitoring patterns.
+
+**Run:**
+```bash
+cd metrics
+go run main.go
+```
+
+**Features:**
+- Counters (requests, errors)
+- Gauges (connections, queue size)
+- Histograms (request duration, response size)
+- Summaries (processing time percentiles)
+- Multi-dimensional labels
+- Business metrics patterns
+
+### [Health](./health/) - Health Checks
+Comprehensive health check patterns for monitoring application and dependency health.
+
+**Run:**
+```bash
+cd health
+go run main.go
+```
+
+**Features:**
+- Liveness and readiness probes
+- Service-specific health checks
+- HTTP dependency monitoring
+- Database connectivity checks
+- Custom health checks
+- Dynamic health status changes
+- Gradual startup patterns
+
+### [Basic](./basic/) - Simple Application
+A minimal FastApp application demonstrating core features.
 
 **Run:**
 ```bash
 cd basic
-go run .
+go run main.go
 ```
 
 **Features:**
@@ -23,17 +105,13 @@ go run .
 - Custom service health check
 - Debug server with metrics
 
-### [Simple](./simple) - Multiple Services
-A more comprehensive example with multiple services:
-- Multiple services running concurrently
-- Individual service health checks
-- Global health checks
-- Service readiness management
+### [Simple](./simple/) - Multiple Services
+Multiple services running concurrently with individual health checks.
 
 **Run:**
 ```bash
 cd simple
-go run .
+go run main.go
 ```
 
 **Features:**
@@ -42,19 +120,15 @@ go run .
 - HTTP endpoint health checks
 - Service-specific health monitoring
 
-### [Advanced](./advanced) - Database Integration
-Production-ready example with database integration:
-- Database connection management
-- Database health checks
-- Business logic health checks
-- Error handling and fallbacks
+### [Advanced](./advanced/) - Database Integration
+Production-ready example with database integration and comprehensive health checks.
 
 **Run:**
 ```bash
 cd advanced
 # Note: Requires PostgreSQL database
 export DATABASE_URL="postgres://user:password@localhost/dbname?sslmode=disable"
-go run .
+go run main.go
 ```
 
 **Features:**
@@ -137,23 +211,29 @@ app := fastapp.New(cfg.App).
 
 ## Testing Examples
 
-Each example can be tested using the health endpoints:
+Each example can be tested using the observability endpoints:
 
 ```bash
 # Start the example
-go run .
+go run main.go
 
 # Test liveness (should always return 200)
-curl http://localhost:8080/health/live
+curl http://localhost:9090/health/live
 
 # Test readiness (returns 200 when ready)
-curl http://localhost:8080/health/ready
+curl http://localhost:9090/health/ready
 
 # Get detailed health information
-curl http://localhost:8080/health/checks | jq .
+curl http://localhost:9090/health/checks | jq .
 
-# Check metrics
+# Check Prometheus metrics
 curl http://localhost:9090/metrics
+
+# Check specific business metrics
+curl http://localhost:9090/metrics | grep business_
+
+# Access profiling endpoints
+curl http://localhost:9090/debug/pprof/
 ```
 
 ## Environment Variables

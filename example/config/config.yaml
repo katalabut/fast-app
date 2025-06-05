@@ -1,0 +1,74 @@
+# Configuration Example - YAML Format
+# This file demonstrates how to structure application configuration
+
+# FastApp framework configuration
+App:
+  Logger:
+    AppName: "config-demo"
+    Level: "info"
+    DevMode: true
+    MessageKey: "message"
+    LevelKey: "level"
+    TimeKey: "timestamp"
+
+  AutoMaxProcs:
+    Enabled: true
+    Min: 1
+
+  Observability:
+    Enabled: true
+    Port: 9090
+
+    Metrics:
+      Enabled: true
+      Path: "/metrics"
+
+    Health:
+      Enabled: true
+      LivePath: "/health/live"
+      ReadyPath: "/health/ready"
+      CheckPath: "/health/checks"
+      Timeout: "30s"
+      CacheTTL: "5s"
+
+    Debug:
+      Enabled: true
+      PathPrefix: "/debug"
+
+# Custom application configuration sections
+Database:
+  URL: "postgres://user:password@localhost:5432/configdemo?sslmode=disable"
+  MaxConnections: 25
+  MaxIdleTime: "15m"
+  ConnectTimeout: "10s"
+  QueryTimeout: "30s"
+  EnableLogging: false
+  MigrationsPath: "./migrations"
+
+Redis:
+  Address: "localhost:6379"
+  Password: ""
+  Database: 0
+  PoolSize: 10
+  DialTimeout: "5s"
+  ReadTimeout: "3s"
+  Enabled: true
+
+API:
+  BaseURL: "https://api.example.com"
+  Timeout: "30s"
+  RetryAttempts: 3
+  RetryDelay: "1s"
+  APIKey: "your-api-key-here"
+  Headers:
+    User-Agent: "ConfigDemo/1.0"
+    Accept: "application/json"
+  RateLimit: 100
+
+Features:
+  EnableNewUI: false
+  EnableBetaAPI: false
+  EnableCaching: true
+  EnableMetrics: true
+  MaxFileSize: 10485760  # 10MB in bytes
+  MaintenanceMode: false

@@ -1,0 +1,57 @@
+# Complete FastApp Demo Configuration
+# This configuration demonstrates all FastApp capabilities
+
+# FastApp framework configuration
+App:
+  Logger:
+    AppName: "complete-demo"
+    Level: "info"
+    DevMode: true
+    MessageKey: "message"
+    LevelKey: "level"
+    TimeKey: "timestamp"
+
+  AutoMaxProcs:
+    Enabled: true
+    Min: 1
+
+  Observability:
+    Enabled: true
+    Port: 9090
+
+    Metrics:
+      Enabled: true
+      Path: "/metrics"
+
+    Health:
+      Enabled: true
+      LivePath: "/health/live"
+      ReadyPath: "/health/ready"
+      CheckPath: "/health/checks"
+      Timeout: "30s"
+      CacheTTL: "5s"
+
+    Debug:
+      Enabled: true
+      PathPrefix: "/debug"
+
+# Application-specific configuration
+Database:
+  URL: "postgres://user:password@localhost:5432/completedemo?sslmode=disable"
+  MaxConnections: 25
+  ConnectTimeout: "10s"
+  QueryTimeout: "30s"
+
+Redis:
+  Address: "localhost:6379"
+  Enabled: false  # Set to true if Redis is available
+
+External:
+  APIURL: "https://httpbin.org/status/200"
+  Timeout: "30s"
+  RetryMax: 3
+
+Business:
+  MaxOrderValue: 10000.0
+  ProcessingDelay: "100ms"
+  EnableNewFeature: false

@@ -1,0 +1,45 @@
+# Health Checks Example Configuration
+
+App:
+  Logger:
+    AppName: "health-demo"
+    Level: "info"
+    DevMode: true
+    MessageKey: "message"
+    LevelKey: "level"
+    TimeKey: "timestamp"
+
+  AutoMaxProcs:
+    Enabled: true
+    Min: 1
+
+  Observability:
+    Enabled: true
+    Port: 9090
+
+    Metrics:
+      Enabled: true
+      Path: "/metrics"
+
+    # Health check configuration
+    Health:
+      Enabled: true
+      LivePath: "/health/live"
+      ReadyPath: "/health/ready"
+      CheckPath: "/health/checks"
+      Timeout: "30s"    # Maximum time for health checks
+      CacheTTL: "5s"    # Cache health check results
+
+    Debug:
+      Enabled: true
+      PathPrefix: "/debug"
+
+# Custom configuration for health check targets
+Database:
+  # Note: This is just for demo - the connection might fail
+  URL: "postgres://user:password@localhost:5432/healthdemo?sslmode=disable"
+
+External:
+  # External API for HTTP health checks
+  APIURL: "https://httpbin.org/status/200"
+  BackupURL: "https://www.google.com"

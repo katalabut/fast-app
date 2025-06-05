@@ -1,0 +1,46 @@
+# Logger Example Configuration
+# This configuration demonstrates different logger settings
+
+App:
+  Logger:
+    # Application name that appears in all log entries
+    AppName: "logger-demo"
+    
+    # Log level - try changing to "debug" to see debug messages
+    # Available levels: debug, info, warn, error, fatal
+    Level: "debug"
+    
+    # Development mode enables colored console output
+    # Set to false for production JSON logging
+    DevMode: true
+    
+    # Customize JSON field names (only used when DevMode: false)
+    MessageKey: "message"
+    LevelKey: "level"
+    TimeKey: "timestamp"
+
+  # Automatic GOMAXPROCS configuration
+  AutoMaxProcs:
+    Enabled: true
+    Min: 1
+
+  # Observability server
+  Observability:
+    Enabled: true
+    Port: 9090
+
+    Metrics:
+      Enabled: true
+      Path: "/metrics"
+
+    Health:
+      Enabled: true
+      LivePath: "/health/live"
+      ReadyPath: "/health/ready"
+      CheckPath: "/health/checks"
+      Timeout: "30s"
+      CacheTTL: "5s"
+
+    Debug:
+      Enabled: true
+      PathPrefix: "/debug"

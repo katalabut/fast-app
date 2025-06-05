@@ -223,6 +223,24 @@ type DatabaseConfig struct {
 }
 ```
 
+### Logger Configuration
+
+The logger is automatically configured when you create the FastApp instance with `fastapp.New()`. This means logging will use your configuration immediately, not just when `Start()` is called:
+
+```go
+func main() {
+    cfg, _ := configloader.New[AppConfig]()
+
+    // Logger is configured here with your settings
+    app := fastapp.New(cfg.App)
+
+    // This log will use your configured logger (AppName, DevMode, etc.)
+    logger.Info(context.Background(), "Application initialized")
+
+    app.Add(&MyService{}).Start()
+}
+```
+
 ## Examples
 
 Check out the [examples](./example) directory for complete working examples:

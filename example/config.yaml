@@ -1,40 +1,94 @@
-# FastApp Configuration Example
-# This file demonstrates the centralized configuration structure
+# FastApp Complete Configuration Example
+# This file demonstrates ALL available configuration options with their default values
+# Use this as a reference for understanding all configuration possibilities
 
-# Logger configuration
-logger:
-  app_name: "my-fastapp"
-  level: "info"
-  dev_mode: false
-  message_key: "message"
-  level_key: "severity"
-  time_key: "timestamp"
+# App configuration - this maps to the "App" field in AppConfig struct
+App:
+  # Logger configuration for structured logging
+  Logger:
+    # Application name included in all log entries
+    AppName: "fastapp"  # default: "fastapp"
 
-# Automatic GOMAXPROCS configuration
-auto_max_procs:
-  enabled: true
-  min: 1
+    # Log level: debug, info, warn, error, fatal
+    Level: "info"  # default: "info"
 
-# Unified observability server configuration
-observability:
-  enabled: true
-  port: 9090
-  
-  # Prometheus metrics
-  metrics:
-    enabled: true
-    path: "/metrics"
-  
-  # Health check endpoints
-  health:
-    enabled: true
-    live_path: "/health/live"
-    ready_path: "/health/ready"
-    check_path: "/health/checks"
-    timeout: "30s"
-    cache_ttl: "5s"
-  
-  # Debug and profiling endpoints
-  debug:
-    enabled: true
-    path_prefix: "/debug"
+    # Development mode enables colored console output
+    DevMode: false  # default: false
+
+    # JSON keys for log fields
+    MessageKey: "message"    # default: "message"
+    LevelKey: "severity"     # default: "severity"
+    TimeKey: "timestamp"     # default: "timestamp"
+
+  # Automatic GOMAXPROCS configuration based on container limits
+  AutoMaxProcs:
+    # Enable automatic GOMAXPROCS detection
+    Enabled: true  # default: true
+
+    # Minimum number of processors to use
+    Min: 1  # default: 1
+
+  # Unified observability server configuration
+  # All monitoring endpoints (metrics, health, debug) on single port
+  Observability:
+    # Enable the observability server
+    Enabled: true  # default: true
+
+    # HTTP port for all observability endpoints
+    Port: 9090  # default: 9090
+
+    # Prometheus metrics configuration
+    Metrics:
+      # Enable metrics endpoint
+      Enabled: true  # default: true
+
+      # URL path for metrics endpoint
+      Path: "/metrics"  # default: "/metrics"
+
+    # Health check endpoints configuration
+    Health:
+      # Enable health check endpoints
+      Enabled: true  # default: true
+
+      # URL path for liveness probe (container restart)
+      LivePath: "/health/live"  # default: "/health/live"
+
+      # URL path for readiness probe (load balancer)
+      ReadyPath: "/health/ready"  # default: "/health/ready"
+
+      # URL path for detailed health check information
+      CheckPath: "/health/checks"  # default: "/health/checks"
+
+      # Maximum time to wait for health checks to complete
+      Timeout: "30s"  # default: "30s"
+
+      # How long to cache health check results
+      CacheTTL: "5s"  # default: "5s"
+
+    # Debug and profiling endpoints configuration
+    Debug:
+      # Enable debug endpoints (pprof, etc.)
+      Enabled: true  # default: true
+
+      # URL path prefix for debug endpoints
+      PathPrefix: "/debug"  # default: "/debug"
+
+# Example of custom application configuration
+# Add your own configuration sections here
+Database:
+  URL: "postgres://user:password@localhost:5432/mydb?sslmode=disable"
+  MaxConnections: 25
+  MaxIdleTime: "15m"
+  ConnectTimeout: "10s"
+
+Redis:
+  Address: "localhost:6379"
+  Password: ""
+  Database: 0
+  PoolSize: 10
+
+ExternalAPI:
+  BaseURL: "https://api.example.com"
+  Timeout: "30s"
+  RetryAttempts: 3
+  APIKey: "your-api-key-here"

@@ -33,6 +33,7 @@ const (
 // health checks, and graceful shutdown.
 type App struct {
 	config Config
+	logger *zap.SugaredLogger
 
 	opts                 options
 	runners              []Runner
@@ -58,12 +59,17 @@ type Service interface {
 }
 
 // New creates a new FastApp application instance with the given configuration and options.
-// It initializes the health management system and sets up the health server endpoints.
+// It initializes the logger with the provided configuration, sets up the health management
+// system and prepares the observability server endpoints.
+//
+// The logger is configured immediately when this function is called, so any subsequent
+// logging will use the configuration from the provided config.
 //
 // Example:
 //
 //	cfg := fastapp.Config{...}
 //	app := fastapp.New(cfg, fastapp.WithVersion("1.0.0"))
+//	// Logger is now configured and ready to use
 func New(config Config, opts ...Option) *App {
 	op := options{
 		version:         "",
@@ -78,6 +84,21 @@ func New(config Config, opts ...Option) *App {
 		o.apply(&op)
 	}
 
+	// Initialize logger with configuration
+	loggerConfig := logger.Config{
+		AppName:    config.Logger.AppName,
+		Level:      config.Logger.Level,
+		DevMode:    config.Logger.DevMode,
+		MessageKey: config.Logger.MessageKey,
+		LevelKey:   config.Logger.LevelKey,
+		TimeKey:    config.Logger.TimeKey,
+	}
+
+	lg, err := logger.InitLogger(loggerConfig, op.version)
+	if err != nil {
+		panic(errors.Wrap(err, "failed to init logger"))
+	}
+
 	// Initialize health manager
 	healthManager := health.NewManager(health.ManagerConfig{
 		CacheTTL: config.Observability.Health.CacheTTL,
@@ -89,6 +110,7 @@ func New(config Config, opts ...Option) *App {
 
 	return &App{
 		config:               config,
+		logger:               lg,
 		opts:                 op,
 		healthManager:        healthManager,
 		observabilityService: observabilityService,
@@ -100,7 +122,6 @@ func New(config Config, opts ...Option) *App {
 // until the application is terminated by a signal or an error occurs.
 //
 // The method handles:
-//   - Logger initialization
 //   - GOMAXPROCS configuration (if enabled)
 //   - Health server startup
 //   - Service startup with panic recovery
@@ -109,25 +130,11 @@ func New(config Config, opts ...Option) *App {
 func (a *App) Start() {
 	var (
 		config = a.config
+		lg     = a.logger
 	)
 
 	ctx, cancel := signal.NotifyContext(a.opts.ctx, os.Interrupt)
 	defer cancel()
-
-	// Convert new config to old logger config for compatibility
-	loggerConfig := logger.Config{
-		AppName:    config.Logger.AppName,
-		Level:      config.Logger.Level,
-		DevMode:    config.Logger.DevMode,
-		MessageKey: config.Logger.MessageKey,
-		LevelKey:   config.Logger.LevelKey,
-		TimeKey:    config.Logger.TimeKey,
-	}
-
-	lg, err := logger.InitLogger(loggerConfig, a.opts.version)
-	if err != nil {
-		panic(errors.Wrap(err, "failed to init logger"))
-	}
 
 	defer func() { _ = lg.Sync() }()
 

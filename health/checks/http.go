@@ -2,6 +2,7 @@ package checks
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -90,7 +91,7 @@ func (h *HTTPCheck) Check(ctx context.Context) health.HealthResult {
 	duration := time.Since(start)
 
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
+		if errors.Is(err, context.DeadlineExceeded) {
 			return health.NewUnhealthyResult("HTTP request timeout").
 				WithDetails("timeout", h.opts.Timeout.String()).
 				WithDetails("url", h.url).
@@ -104,7 +105,7 @@ func (h *HTTPCheck) Check(ctx context.Context) health.HealthResult {
 			WithDetails("duration", duration.String()).
 			WithDuration(duration)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check status code
 	if resp.StatusCode != h.opts.ExpectedStatus {
@@ -118,7 +119,7 @@ func (h *HTTPCheck) Check(ctx context.Context) health.HealthResult {
 
 	// Check response body if expected
 	if h.opts.ExpectedBody != "" {
-		body, err := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(io.LimitReader(resp.Body, (64<<10)+1))
 		if err != nil {
 			return health.NewUnhealthyResult("failed to read HTTP response body").
 				WithDetails("error", err.Error()).
@@ -127,10 +128,11 @@ func (h *HTTPCheck) Check(ctx context.Context) health.HealthResult {
 				WithDuration(duration)
 		}
 
+		if len(body) > 64<<10 {
+			return health.NewUnhealthyResult("HTTP response body exceeds 64 KiB limit").WithDuration(time.Since(start))
+		}
 		if !strings.Contains(string(body), h.opts.ExpectedBody) {
 			return health.NewUnhealthyResult("HTTP response body does not contain expected content").
-				WithDetails("expected_body", h.opts.ExpectedBody).
-				WithDetails("actual_body", string(body)).
 				WithDetails("url", h.url).
 				WithDetails("duration", duration.String()).
 				WithDuration(duration)

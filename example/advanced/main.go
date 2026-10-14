@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"sync/atomic"
 	"time"
 
 	fastapp "github.com/katalabut/fast-app"
@@ -26,7 +27,7 @@ type DatabaseConfig struct {
 
 type APIService struct {
 	db    *sql.DB
-	ready bool
+	ready atomic.Bool
 }
 
 func NewAPIService(db *sql.DB) *APIService {
@@ -37,12 +38,12 @@ func NewAPIService(db *sql.DB) *APIService {
 
 func (s *APIService) Run(ctx context.Context) error {
 	logger.Info(ctx, "API Service starting...")
-	
+
 	// Simulate initialization
 	time.Sleep(1 * time.Second)
 	s.SetReady(true)
 	logger.Info(ctx, "API Service is ready")
-	
+
 	// Keep running until context is cancelled
 	<-ctx.Done()
 	return nil
@@ -76,28 +77,28 @@ func (s *APIService) checkBusinessLogic(ctx context.Context) health.HealthResult
 		return health.NewUnhealthyResult("Failed to query database").
 			WithDetails("error", err.Error())
 	}
-	
+
 	if count < 1 {
 		return health.NewDegradedResult("Database seems empty").
 			WithDetails("table_count", count)
 	}
-	
+
 	return health.NewHealthyResult("Business logic check passed").
 		WithDetails("table_count", count)
 }
 
 // SetReady implements health.ReadinessController
 func (s *APIService) SetReady(ready bool) {
-	s.ready = ready
+	s.ready.Store(ready)
 }
 
 // IsReady implements health.ReadinessController
 func (s *APIService) IsReady() bool {
-	return s.ready
+	return s.ready.Load()
 }
 
 type WorkerService struct {
-	ready bool
+	ready atomic.Bool
 }
 
 func NewWorkerService() *WorkerService {
@@ -106,16 +107,16 @@ func NewWorkerService() *WorkerService {
 
 func (s *WorkerService) Run(ctx context.Context) error {
 	logger.Info(ctx, "Worker Service starting...")
-	
+
 	// Simulate longer initialization
 	time.Sleep(3 * time.Second)
 	s.SetReady(true)
 	logger.Info(ctx, "Worker Service is ready")
-	
+
 	// Simulate work
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ticker.C:
@@ -145,11 +146,11 @@ func (s *WorkerService) HealthChecks() []health.HealthChecker {
 }
 
 func (s *WorkerService) SetReady(ready bool) {
-	s.ready = ready
+	s.ready.Store(ready)
 }
 
 func (s *WorkerService) IsReady() bool {
-	return s.ready
+	return s.ready.Load()
 }
 
 func main() {
@@ -180,7 +181,7 @@ func main() {
 
 	// Global health checks
 	var globalChecks []health.HealthChecker
-	globalChecks = append(globalChecks, 
+	globalChecks = append(globalChecks,
 		checks.NewHTTPCheck("google", "https://www.google.com"),
 		checks.NewHTTPCheck("httpbin", "https://httpbin.org/status/200"),
 	)
@@ -200,12 +201,12 @@ func main() {
 
 	// Set application as ready
 	app.SetReady(true)
-	
+
 	logger.Info(context.Background(), "Starting application with health checks enabled")
 	logger.Info(context.Background(), "Health endpoints available at:")
 	logger.Info(context.Background(), "  - Liveness:  http://localhost:8080/health/live")
-	logger.Info(context.Background(), "  - Readiness: http://localhost:8080/health/ready") 
+	logger.Info(context.Background(), "  - Readiness: http://localhost:8080/health/ready")
 	logger.Info(context.Background(), "  - Detailed:  http://localhost:8080/health/checks")
-	
+
 	app.Start()
 }

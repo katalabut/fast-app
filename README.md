@@ -6,7 +6,7 @@
 
 **A lightweight, production-ready application framework for Go**
 
-[![Go Version](https://img.shields.io/badge/Go-%3E%3D%201.21-blue.svg)](https://golang.org/)
+[![Go Version](https://img.shields.io/badge/Go-%3E%3D%201.23.6-blue.svg)](https://golang.org/)
 [![Go Report Card](https://goreportcard.com/badge/github.com/katalabut/fast-app)](https://goreportcard.com/report/github.com/katalabut/fast-app)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Coverage](https://img.shields.io/badge/Coverage-85%25-green.svg)](https://github.com/katalabut/fast-app)
@@ -61,7 +61,7 @@ go get github.com/katalabut/fast-app
 ```
 
 **Requirements:**
-- Go 1.21 or higher
+- Go 1.23.6 or higher
 - No external dependencies for core functionality
 
 ## Quick Start
@@ -348,3 +348,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 <div align="center">
 Made with ❤️ by the FastApp team
 </div>
+
+
+For the uncommitted candidate's configuration fixes, opt-in diagnostics and
+resource ownership requirements, see [release candidate notes](docs/release-candidate.md).

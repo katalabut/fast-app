@@ -13,7 +13,7 @@ type Env struct {
 }
 
 func NewEnv(prefix string) *Env {
-	return &Env{prefix: prefix}
+	return &Env{prefix: strings.TrimRight(prefix, "_")}
 }
 
 func (e *Env) Name() string {

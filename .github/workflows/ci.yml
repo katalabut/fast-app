@@ -6,12 +6,15 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  GOTOOLCHAIN: local
+
 jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [1.21, 1.22]
+        go-version: ['1.23.6', '1.26.1']
 
     steps:
     - uses: actions/checkout@v4
@@ -56,12 +59,12 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.21
+        go-version: '1.26.1'
 
     - name: golangci-lint
-      uses: golangci/golangci-lint-action@v3
+      uses: golangci/golangci-lint-action@v9
       with:
-        version: latest
+        version: v2.11.4
 
   examples:
     runs-on: ubuntu-latest
@@ -71,13 +74,13 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.21
+        go-version: '1.26.1'
 
     - name: Build examples
       run: |
-        cd example/basic && go build .
-        cd ../simple && go build .
-        cd ../advanced && go build .
+        for example in basic simple advanced config logger metrics health complete; do
+          (cd "example/$example" && go build -mod=readonly -o "$RUNNER_TEMP/fast-app-$example" .)
+        done
 
   security:
     runs-on: ubuntu-latest
@@ -87,9 +90,9 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v4
       with:
-        go-version: 1.21
+        go-version: '1.26.1'
 
     - name: Run Gosec Security Scanner
-      uses: securecodewarrior/github-action-gosec@master
+      uses: securego/gosec@deb54465fea23d19a77f037e11e6589021f8501d # v2.29.0
       with:
         args: './...'

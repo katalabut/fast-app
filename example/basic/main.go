@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	fastapp "github.com/katalabut/fast-app"
@@ -17,7 +18,7 @@ type AppConfig struct {
 }
 
 type ApiService struct {
-	ready bool
+	ready atomic.Bool
 }
 
 func NewApiService() *ApiService {
@@ -57,12 +58,12 @@ func (s *ApiService) HealthChecks() []health.HealthChecker {
 
 // SetReady implements health.ReadinessController
 func (s *ApiService) SetReady(ready bool) {
-	s.ready = ready
+	s.ready.Store(ready)
 }
 
 // IsReady implements health.ReadinessController
 func (s *ApiService) IsReady() bool {
-	return s.ready
+	return s.ready.Load()
 }
 
 func main() {

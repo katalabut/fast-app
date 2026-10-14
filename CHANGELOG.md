@@ -53,11 +53,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Retain native multi-level pointer targets and pointer collection children during
+  scoped configuration decoding, including nil, prepopulated and interface targets.
+- Preserve typed custom-source zero/false values and native weak container/null
+  conversions; initialize nested defaults before overlay within each field policy.
+  `default:"-"` suppresses the whole subtree, including custom SetDefaults calls.
+  Weak slice-to-map input merges its entries without retaining default map entries.
+- SIGTERM/SIGINT cleanup, explicit logger flush and a saturating, independent
+  watchdog with a bounded best-effort final flush.
+- Env-only configuration, explicit false/zero/empty values, deterministic source
+  ordering and authoritative non-empty CONFIG_FILE paths. Decoder-created nested
+  pointers and collection elements retain omitted defaults without overwriting zero values.
+- Endpoint validation follows active pprof opt-in state and permits metrics to use
+  dormant default-prefix pprof patterns.
+- Health cache expiry, replacement/clear invalidation, stale in-flight writes,
+  returned Details isolation and health/lifecycle panic boundaries.
+- Global logger/version races, context tags and duplicate tags through KV context.
+- HTTP startup/shutdown races and consistent single-snapshot health responses.
+- Bounded HTTP-check body matching, timeout classification and SQL row-close errors.
+- Logger example API use and incomplete nested example module metadata.
+
 ### Added
-- Named services and selective running
-- Dependency injection container
-- Configuration hot reload
-- Enhanced metrics and observability
+- Optional config.App.Validate; enabled servers return route validation errors.
+- Explicit observability address, health-details redaction and pprof options.
+  Existing defaults and public config struct layouts are preserved.
+- Regression tests and [candidate migration notes](docs/release-candidate.md).
+
+### Validation
+- Go CI matrix aligned to the module minimum and locally tested compiler;
+  pinned lint tool and all eight example builds. Actual runs are separately recorded.
+
+This is a local candidate, without a version/tag or production rollout. Config
+bug fixes can change effective deployed values; review the migration notes first.
 
 ## [0.2.0] - 2024-01-15
 

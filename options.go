@@ -7,9 +7,12 @@ import (
 )
 
 type options struct {
-	version         string
-	stopAllOnErr    bool
-	shutdownTimeout time.Duration
+	observabilityAddress string
+	pprofEnabled         bool
+	redactHealthDetails  bool
+	version              string
+	stopAllOnErr         bool
+	shutdownTimeout      time.Duration
 
 	ctx context.Context
 	mux *http.ServeMux
@@ -45,9 +48,10 @@ func WithVersion(version string) Option {
 	)
 }
 
-// WithDisableStopAllOnErr disables the default behavior of stopping all services
-// when one service encounters an error. By default, if any service fails,
-// all services are gracefully shut down.
+// WithDisableStopAllOnErr lets other services continue after a Run/Shutdown error or Run panic.
+// The failed service is shut down independently. Failures are logged immediately and
+// still cause exit code 1 when the remaining services stop; no restart is performed.
+// By default, any service failure cancels all services.
 func WithDisableStopAllOnErr() Option {
 	return optionFunc(
 		func(o *options) {
@@ -56,8 +60,10 @@ func WithDisableStopAllOnErr() Option {
 	)
 }
 
-// WithShutdownTimeout sets the maximum time to wait for services to shut down gracefully.
-// If services don't shut down within this timeout, the application will be forcefully terminated.
+// WithShutdownTimeout sets the timeout passed to service Shutdown methods.
+// The watchdog triggers after this timeout plus 5 seconds, saturating at the
+// largest time.Duration. It then allows at most 100 milliseconds for its final
+// log flush before forcibly terminating the process.
 // Default timeout is 5 seconds.
 func WithShutdownTimeout(timeout time.Duration) Option {
 	return optionFunc(
@@ -65,4 +71,19 @@ func WithShutdownTimeout(timeout time.Duration) Option {
 			o.shutdownTimeout = timeout
 		},
 	)
+}
+
+// WithObservabilityAddress opts into a specific listener address; the default remains :port.
+func WithObservabilityAddress(address string) Option {
+	return optionFunc(func(o *options) { o.observabilityAddress = address })
+}
+
+// WithPprof opts into default-prefix pprof endpoints if Debug.Enabled is true.
+// Prefer a private listener via WithObservabilityAddress before enabling diagnostics.
+func WithPprof() Option { return optionFunc(func(o *options) { o.pprofEnabled = true }) }
+
+// WithHealthDetailsRedacted omits checker Details from built-in HTTP responses.
+// Checker Message and Status remain public and must not contain secrets.
+func WithHealthDetailsRedacted() Option {
+	return optionFunc(func(o *options) { o.redactHealthDetails = true })
 }

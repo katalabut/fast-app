@@ -1,6 +1,7 @@
 package configloader
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/katalabut/fast-app/configloader/source"
@@ -39,14 +40,17 @@ func WithFile(paths ...string) Option {
 
 // WithFileFromEnv adds configuration file support with the file path taken from
 // the CONFIG_FILE environment variable. If the environment variable is not set,
-// it falls back to the provided paths. This is useful for containerized environments
+// it falls back to the provided paths. A non-empty explicit path never falls back. This is useful for containerized environments
 // where the config file location may vary.
 func WithFileFromEnv(paths ...string) Option {
-	var pathsState []string
 	if path := os.Getenv(envFilePath); path != "" {
-		pathsState = append(pathsState, path)
+		option := WithFile(path)
+		return func(p *Parser) error {
+			if err := option(p); err != nil {
+				return fmt.Errorf("CONFIG_FILE must identify a readable supported configuration file: %w", err)
+			}
+			return nil
+		}
 	}
-	pathsState = append(pathsState, paths...)
-
-	return WithFile(pathsState...)
+	return WithFile(paths...)
 }

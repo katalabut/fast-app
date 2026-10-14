@@ -7,7 +7,7 @@ Welcome to the FastApp documentation! This guide will help you understand and us
 ### Getting Started
 - [**Getting Started**](./getting-started.md) - Your first FastApp application
 - [**Installation**](./installation.md) - Installation and setup guide
-- [**Quick Start**](./quick-start.md) - 5-minute tutorial
+- [**Quick Start**](./getting-started.md) - 5-minute tutorial
 
 ### Core Concepts
 - [**Architecture**](./architecture.md) - System design and components
@@ -22,7 +22,7 @@ Welcome to the FastApp documentation! This guide will help you understand and us
 - [**Security**](./security.md) - Security best practices
 
 ### Reference
-- [**API Reference**](./api-reference.md) - Complete API documentation
+- [**API Reference**](https://pkg.go.dev/github.com/katalabut/fast-app) - Complete API documentation
 - [**Configuration Reference**](./configuration-reference.md) - All configuration options
 - [**Examples**](./examples.md) - Code examples and patterns
 - [**Troubleshooting**](./troubleshooting.md) - Common issues and solutions
@@ -137,7 +137,7 @@ A: Use environment variables to override configuration values. FastApp automatic
 
 | FastApp Version | Go Version | Status |
 |----------------|------------|---------|
-| v1.x.x         | >= 1.21    | ✅ Active |
+| v1.x.x         | >= 1.23.6    | ✅ Active |
 | v0.x.x         | >= 1.19    | 🔄 Beta |
 
 ## License

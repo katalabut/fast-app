@@ -45,7 +45,7 @@ func (s *LoggerDemoService) Run(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			logger.InfoKV(ctx, "Service heartbeat", 
+			logger.InfoKV(ctx, "Service heartbeat",
 				"service", s.name,
 				"uptime", time.Since(time.Now()).String(),
 				"status", "running")
@@ -66,7 +66,7 @@ func (s *LoggerDemoService) demonstrateLogLevels(ctx context.Context) {
 
 	// Debug level (only visible when log level is debug)
 	logger.Debug(ctx, "This is a debug message - useful for development")
-	logger.DebugKV(ctx, "Debug with structured data", 
+	logger.DebugKV(ctx, "Debug with structured data",
 		"user_id", 12345,
 		"action", "login_attempt",
 		"ip", "192.168.1.100")
@@ -119,8 +119,8 @@ func (s *LoggerDemoService) demonstrateStructuredLogging(ctx context.Context) {
 	// Logging arrays and complex data
 	items := []string{"laptop", "mouse", "keyboard"}
 	metadata := map[string]interface{}{
-		"source": "web",
-		"campaign": "summer_sale",
+		"source":           "web",
+		"campaign":         "summer_sale",
 		"discount_applied": true,
 	}
 
@@ -134,7 +134,7 @@ func (s *LoggerDemoService) demonstrateContextLogging(ctx context.Context) {
 	logger.Info(ctx, "=== Demonstrating Context-Aware Logging ===")
 
 	// Create context with additional fields
-	ctxWithUser := logger.WithFields(ctx, 
+	ctxWithUser := logger.ContextWithKV(ctx,
 		"user_id", 12345,
 		"session_id", "sess-abcdef",
 		"trace_id", "trace-123456")
@@ -145,7 +145,7 @@ func (s *LoggerDemoService) demonstrateContextLogging(ctx context.Context) {
 	logger.Info(ctxWithUser, "Order confirmation sent")
 
 	// Nested context with additional fields
-	ctxWithOrder := logger.WithFields(ctxWithUser,
+	ctxWithOrder := logger.ContextWithKV(ctxWithUser,
 		"order_id", "ord-789012",
 		"payment_method", "credit_card")
 

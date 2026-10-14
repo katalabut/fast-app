@@ -87,7 +87,7 @@ func isFileExist(path string) (absPath string, ok bool) {
 	}
 
 	info, err := os.Stat(absPath)
-	if os.IsNotExist(err) {
+	if err != nil {
 		return
 	}
 	if info.IsDir() {

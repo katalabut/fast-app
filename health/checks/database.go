@@ -37,7 +37,7 @@ func NewDatabaseCheckWithOptions(name string, db *sql.DB, opts DatabaseOptions) 
 	if opts.PingTimeout == 0 {
 		opts.PingTimeout = 5 * time.Second
 	}
-	
+
 	return &DatabaseCheck{
 		name: name,
 		db:   db,
@@ -53,13 +53,13 @@ func (d *DatabaseCheck) Name() string {
 // Check executes the database health check
 func (d *DatabaseCheck) Check(ctx context.Context) health.HealthResult {
 	start := time.Now()
-	
+
 	// Create a context with timeout
 	checkCtx, cancel := context.WithTimeout(ctx, d.opts.PingTimeout)
 	defer cancel()
 
 	var err error
-	
+
 	if d.opts.Query != "" {
 		// Execute custom query
 		err = d.executeQuery(checkCtx)
@@ -77,7 +77,7 @@ func (d *DatabaseCheck) Check(ctx context.Context) health.HealthResult {
 				WithDetails("duration", duration.String()).
 				WithDuration(duration)
 		}
-		
+
 		return health.NewUnhealthyResult("database ping failed").
 			WithDetails("error", err.Error()).
 			WithDetails("duration", duration.String()).
@@ -105,8 +105,6 @@ func (d *DatabaseCheck) executeQuery(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-
-	// Just check if we can execute the query, don't need to process results
-	return nil
+	// Close can report a driver/protocol error even when the query was accepted.
+	return rows.Close()
 }

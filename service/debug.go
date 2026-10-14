@@ -4,10 +4,11 @@ package service
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+	"sync/atomic"
 	"time"
 
+	"github.com/katalabut/fast-app/config"
 	"github.com/katalabut/fast-app/logger"
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -22,8 +23,10 @@ type DebugServer struct {
 // DefaultDebugService provides a debug HTTP server with metrics and profiling endpoints.
 // It exposes Prometheus metrics at /metrics and Go pprof endpoints for debugging.
 type DefaultDebugService struct {
-	cfg    DebugServer
-	server http.Server
+	cfg          DebugServer
+	server       *http.Server
+	started      atomic.Bool
+	pprofEnabled bool
 }
 
 // NewDefaultDebugService creates a new debug service with the given configuration.
@@ -31,7 +34,8 @@ type DefaultDebugService struct {
 // and profiling endpoints.
 func NewDefaultDebugService(cfg DebugServer) *DefaultDebugService {
 	return &DefaultDebugService{
-		cfg: cfg,
+		cfg:    cfg,
+		server: &http.Server{Addr: httpAddress("", cfg.Port), ReadTimeout: 5 * time.Second, IdleTimeout: 120 * time.Second},
 	}
 }
 
@@ -41,21 +45,26 @@ func (s *DefaultDebugService) Shutdown(ctx context.Context) error {
 	return s.server.Shutdown(ctx)
 }
 
-// Run starts the debug HTTP server and blocks until the context is cancelled.
+// Run starts the debug HTTP server once and waits for Shutdown; an already cancelled context prevents startup.
 // The server provides the following endpoints:
 //   - /metrics - Prometheus metrics endpoint
-//   - /debug/pprof/* - Go profiling endpoints (automatically registered)
+//   - /debug/pprof/* - Go profiling endpoints (explicit WithPprof opt-in)
 func (s *DefaultDebugService) Run(ctx context.Context) error {
-	mux := http.NewServeMux()
-
-	mux.Handle("/metrics", promhttp.Handler())
-
-	s.server = http.Server{
-		Addr:        fmt.Sprintf(":%d", s.cfg.Port),
-		ReadTimeout: 5 * time.Second,
-		IdleTimeout: 120 * time.Second,
-		Handler:     mux,
+	if ctx.Err() != nil {
+		return nil
 	}
+	if !s.started.CompareAndSwap(false, true) {
+		return errors.New("debug service already started")
+	}
+	if err := (config.Observability{Enabled: true, Port: s.cfg.Port}).Validate(); err != nil {
+		return err
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	if s.pprofEnabled {
+		registerPprof(mux, "/debug")
+	}
+	s.server.Handler = mux
 
 	logger.InfoKV(ctx, "Debug server is running", "address", s.server.Addr)
 
@@ -64,4 +73,17 @@ func (s *DefaultDebugService) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// WithListenAddress changes the bind address before Run; the default remains :port.
+func (s *DefaultDebugService) WithListenAddress(address string) *DefaultDebugService {
+	s.server.Addr = address
+	return s
+}
+
+// WithPprof explicitly enables pprof on the private mux, with a 35-second write budget.
+func (s *DefaultDebugService) WithPprof() *DefaultDebugService {
+	s.pprofEnabled = true
+	s.server.WriteTimeout = 35 * time.Second
+	return s
 }

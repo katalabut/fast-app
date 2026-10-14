@@ -21,7 +21,7 @@ func TestHTTPCheck(t *testing.T) {
 	t.Run("SuccessfulCheck", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"ok"}`))
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
 		}))
 		defer server.Close()
 
@@ -57,7 +57,7 @@ func TestHTTPCheck(t *testing.T) {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"healthy"}`))
+			_, _ = w.Write([]byte(`{"status":"healthy"}`))
 		}))
 		defer server.Close()
 
@@ -94,7 +94,7 @@ func TestHTTPCheck(t *testing.T) {
 	t.Run("ExpectedBodyMismatch", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"status":"error"}`))
+			_, _ = w.Write([]byte(`{"status":"error"}`))
 		}))
 		defer server.Close()
 

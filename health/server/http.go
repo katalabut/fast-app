@@ -4,7 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	cfg "github.com/katalabut/fast-app/config"
+	"net"
 	"net/http"
+	"strconv"
+	"sync/atomic"
 	"time"
 
 	"github.com/katalabut/fast-app/health"
@@ -23,16 +27,20 @@ type Config struct {
 
 // Server provides HTTP endpoints for health checks
 type Server struct {
-	config  Config
-	manager *health.Manager
-	server  *http.Server
+	config        Config
+	manager       *health.Manager
+	server        *http.Server
+	started       atomic.Bool
+	redactDetails bool
 }
 
 // NewServer creates a new health server
 func NewServer(config Config, manager *health.Manager) *Server {
+	host := ""
 	return &Server{
 		config:  config,
 		manager: manager,
+		server:  &http.Server{Addr: net.JoinHostPort(host, strconv.Itoa(config.Port)), ReadTimeout: config.Timeout, WriteTimeout: config.Timeout, IdleTimeout: 60 * time.Second},
 	}
 }
 
@@ -43,22 +51,26 @@ func (s *Server) Start(ctx context.Context) error {
 		return nil
 	}
 
+	if ctx.Err() != nil {
+		return nil
+	}
+	if !s.started.CompareAndSwap(false, true) {
+		return fmt.Errorf("health server already started")
+	}
+	validation := cfg.Observability{Enabled: true, Port: s.config.Port, Health: cfg.Health{Enabled: true, LivePath: s.config.LivePath, ReadyPath: s.config.ReadyPath, CheckPath: s.config.CheckPath, Timeout: s.config.Timeout}}
+	if err := validation.Validate(); err != nil {
+		return err
+	}
+	if s.manager == nil {
+		return fmt.Errorf("health manager is required")
+	}
 	mux := http.NewServeMux()
-	
-	// Register health endpoints
 	mux.HandleFunc(s.config.LivePath, s.handleLiveness)
 	mux.HandleFunc(s.config.ReadyPath, s.handleReadiness)
 	mux.HandleFunc(s.config.CheckPath, s.handleChecks)
+	s.server.Handler = mux
 
-	s.server = &http.Server{
-		Addr:         fmt.Sprintf(":%d", s.config.Port),
-		Handler:      mux,
-		ReadTimeout:  s.config.Timeout,
-		WriteTimeout: s.config.Timeout,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	logger.Info(ctx, "Starting health server", 
+	logger.InfoKV(ctx, "Starting health server",
 		"port", s.config.Port,
 		"live_path", s.config.LivePath,
 		"ready_path", s.config.ReadyPath,
@@ -91,7 +103,7 @@ func (s *Server) handleLiveness(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // handleReadiness handles readiness probe requests
@@ -114,14 +126,14 @@ func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	if ready {
 		w.WriteHeader(http.StatusOK)
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-	
-	json.NewEncoder(w).Encode(response)
+
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // handleChecks handles detailed health checks requests
@@ -131,7 +143,13 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 
 	start := time.Now()
 	results := s.manager.CheckAll(ctx)
-	overallStatus := s.manager.GetOverallStatus(ctx)
+	overallStatus := s.manager.Aggregate(results)
+	if s.redactDetails {
+		for name, result := range results {
+			result.Details = nil
+			results[name] = result
+		}
+	}
 	duration := time.Since(start)
 
 	response := map[string]interface{}{
@@ -143,7 +161,7 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	// Return appropriate status code based on overall health
 	switch overallStatus {
 	case health.StatusHealthy:
@@ -155,6 +173,12 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.WriteHeader(http.StatusInternalServerError)
 	}
-	
-	json.NewEncoder(w).Encode(response)
+
+	_ = json.NewEncoder(w).Encode(response)
 }
+
+// WithListenAddress changes the bind address before Start; the default remains :port.
+func (s *Server) WithListenAddress(address string) *Server { s.server.Addr = address; return s }
+
+// WithDetailsRedacted omits checker Details while preserving Message and Status.
+func (s *Server) WithDetailsRedacted() *Server { s.redactDetails = true; return s }

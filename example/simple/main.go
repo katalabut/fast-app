@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	fastapp "github.com/katalabut/fast-app"
@@ -18,7 +19,7 @@ type AppConfig struct {
 
 type SimpleService struct {
 	name  string
-	ready bool
+	ready atomic.Bool
 }
 
 func NewSimpleService(name string) *SimpleService {
@@ -87,11 +88,11 @@ func (s *SimpleService) HealthChecks() []health.HealthChecker {
 }
 
 func (s *SimpleService) SetReady(ready bool) {
-	s.ready = ready
+	s.ready.Store(ready)
 }
 
 func (s *SimpleService) IsReady() bool {
-	return s.ready
+	return s.ready.Load()
 }
 
 func main() {

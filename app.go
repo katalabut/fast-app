@@ -5,10 +5,13 @@ package fastapp
 
 import (
 	"context"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/katalabut/fast-app/health"
@@ -26,7 +29,8 @@ const (
 	exitCodeWatchdog       = 1
 
 	defaultShutdownTimeout = time.Second * 5
-	watchdogTimeout        = defaultShutdownTimeout + time.Second*5
+	watchdogGracePeriod    = time.Second * 5
+	watchdogFlushTimeout   = time.Millisecond * 100
 )
 
 // App represents the main application instance that manages services,
@@ -71,6 +75,7 @@ type Service interface {
 //	app := fastapp.New(cfg, fastapp.WithVersion("1.0.0"))
 //	// Logger is now configured and ready to use
 func New(config Config, opts ...Option) *App {
+
 	op := options{
 		version:         "",
 		stopAllOnErr:    true,
@@ -107,6 +112,15 @@ func New(config Config, opts ...Option) *App {
 
 	// Initialize observability service
 	observabilityService := service.NewObservabilityService(config.Observability, healthManager)
+	if op.observabilityAddress != "" {
+		observabilityService.WithListenAddress(op.observabilityAddress)
+	}
+	if op.pprofEnabled {
+		observabilityService.WithPprof()
+	}
+	if op.redactHealthDetails {
+		observabilityService.WithDetailsRedacted()
+	}
 
 	return &App{
 		config:               config,
@@ -120,6 +134,7 @@ func New(config Config, opts ...Option) *App {
 // Start begins the application lifecycle, starting all registered services
 // and setting up signal handling for graceful shutdown. This method blocks
 // until the application is terminated by a signal or an error occurs.
+// Start exits the process after shutdown; deferred functions in its caller do not run.
 //
 // The method handles:
 //   - GOMAXPROCS configuration (if enabled)
@@ -133,10 +148,8 @@ func (a *App) Start() {
 		lg     = a.logger
 	)
 
-	ctx, cancel := signal.NotifyContext(a.opts.ctx, os.Interrupt)
+	ctx, cancel := signal.NotifyContext(a.opts.ctx, os.Interrupt, syscall.SIGTERM)
 	defer cancel()
-
-	defer func() { _ = lg.Sync() }()
 
 	lg.Info("Starting")
 
@@ -154,49 +167,47 @@ func (a *App) Start() {
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	// Start observability server (includes health checks, metrics, and debug endpoints)
-	if a.config.Observability.Enabled {
-		g.Go(a.GracefulShutdown(ctx, a.observabilityService.Shutdown))
-		g.Go(func() error {
-			return a.observabilityService.Run(ctx)
-		})
+	var failureMu sync.Mutex
+	var serviceFailures error
+	recordFailure := func(err error) error {
+		if err == nil || a.opts.stopAllOnErr {
+			return err
+		}
+		failureMu.Lock()
+		serviceFailures = stderrors.Join(serviceFailures, err)
+		failureMu.Unlock()
+		lg.Errorw("Service failed; other services continue", zap.Error(err))
+		return nil
 	}
-
-	for _, run := range a.runners {
-		run := run
-
-		g.Go(a.GracefulShutdown(ctx, run.service.Shutdown))
-		g.Go(
-			func() (rerr error) {
-				defer func() {
-					// Recovering panic to log it and return error.
-					if ec := recover(); ec != nil {
-						lg.Errorw(
-							"Panic",
-							zap.String("panic", fmt.Sprintf("%v", ec)),
-							zap.StackSkip("stack", 1),
-						)
-						rerr = fmt.Errorf("shutting down (panic): %v", ec)
-
-						// Also shutting down all services on error.
-						if a.opts.stopAllOnErr {
-							cancel()
-						}
-					}
-				}()
-
-				if err := run.service.Run(ctx); err != nil {
-					if errors.Is(err, ctx.Err()) {
-						// Parent context got cancelled, error is expected.
-						lg.Debug("Graceful shutdown")
-						return nil
-					}
-					return err
+	services := make([]Service, 0, len(a.runners)+1)
+	if a.config.Observability.Enabled {
+		services = append(services, a.observabilityService)
+	}
+	for _, runner := range a.runners {
+		services = append(services, runner.service)
+	}
+	for _, svc := range services {
+		serviceCtx, stopService := context.WithCancel(ctx)
+		g.Go(func() error { return recordFailure(a.GracefulShutdown(serviceCtx, svc.Shutdown)()) })
+		g.Go(func() (rerr error) {
+			defer func() {
+				if ec := recover(); ec != nil {
+					lg.Errorw("Panic", zap.String("panic", fmt.Sprintf("%v", ec)), zap.StackSkip("stack", 1))
+					rerr = fmt.Errorf("shutting down (panic): %v", ec)
 				}
-
-				return nil
-			},
-		)
+				if rerr != nil {
+					stopService()
+					rerr = recordFailure(rerr)
+				}
+			}()
+			if err := svc.Run(serviceCtx); err != nil {
+				if errors.Is(err, serviceCtx.Err()) {
+					return nil
+				}
+				return err
+			}
+			return nil
+		})
 	}
 
 	// if a.config.DebugServer.Enabled {
@@ -213,32 +224,66 @@ func (a *App) Start() {
 		// Helps if f is stuck, e.g. deadlock during shutdown.
 		<-ctx.Done()
 
-		// Context is canceled, giving application time to shut down gracefully.
+		// The hard deadline must not depend on logger Write or Sync completing.
+		deadline := time.NewTimer(watchdogDelay(a.opts.shutdownTimeout))
+		flushStart := make(chan struct{})
+		flushDone := make(chan struct{})
+		go func() {
+			lg.Info("Waiting for application shutdown")
+			<-flushStart
+			lg.Warn("Graceful shutdown watchdog triggered: forcing shutdown")
+			_ = lg.Sync()
+			close(flushDone)
+		}()
 
-		lg.Info("Waiting for application shutdown")
-		time.Sleep(watchdogTimeout)
+		<-deadline.C
+		close(flushStart)
 
-		// Application is not shutting down gracefully, kill it.
-		// This code should not be executed if f is already returned.
-
-		lg.Warn("Graceful shutdown watchdog triggered: forcing shutdown")
+		// Give the final warning and flush a bounded opportunity to finish.
+		// A stuck logger cannot prevent this goroutine from exiting the process.
+		flushDeadline := time.NewTimer(watchdogFlushTimeout)
+		select {
+		case <-flushDone:
+		case <-flushDeadline.C:
+		}
+		flushDeadline.Stop()
 		os.Exit(exitCodeWatchdog)
 	}()
 
-	if err := g.Wait(); err != nil {
+	err := g.Wait()
+	failureMu.Lock()
+	err = stderrors.Join(err, serviceFailures)
+	failureMu.Unlock()
+	if err != nil {
 		lg.Errorw("Failed", zap.Error(err))
+		_ = lg.Sync()
 		os.Exit(exitCodeApplicationErr)
 	}
 
 	lg.Info("Application stopped")
+	_ = lg.Sync()
 	os.Exit(exitCodeOk)
+}
+
+// watchdogDelay saturates rather than overflowing for large positive timeouts.
+func watchdogDelay(shutdownTimeout time.Duration) time.Duration {
+	const maxDuration = time.Duration(1<<63 - 1)
+	if shutdownTimeout > maxDuration-watchdogGracePeriod {
+		return maxDuration
+	}
+	return shutdownTimeout + watchdogGracePeriod
 }
 
 // GracefulShutdown creates a shutdown function that waits for the context to be cancelled
 // and then executes the provided shutdown functions with a timeout.
 // This is used internally to coordinate graceful shutdown of services.
 func (a *App) GracefulShutdown(ctx context.Context, f ...func(context.Context) error) func() error {
-	return func() error {
+	return func() (rerr error) {
+		defer func() {
+			if ec := recover(); ec != nil {
+				rerr = fmt.Errorf("failed to shut down service (panic): %v", ec)
+			}
+		}()
 		// Wait until g ctx canceled, then try to shut down server.
 		<-ctx.Done()
 

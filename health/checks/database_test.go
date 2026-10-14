@@ -1,41 +1,10 @@
 package checks
 
 import (
-	"context"
 	"database/sql"
 	"testing"
 	"time"
 )
-
-// Mock database for testing
-type mockDB struct {
-	pingError  error
-	queryError error
-	pingDelay  time.Duration
-	queryDelay time.Duration
-}
-
-func (m *mockDB) PingContext(ctx context.Context) error {
-	if m.pingDelay > 0 {
-		select {
-		case <-time.After(m.pingDelay):
-		case <-ctx.Done():
-			return ctx.Err()
-		}
-	}
-	return m.pingError
-}
-
-func (m *mockDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	if m.queryDelay > 0 {
-		select {
-		case <-time.After(m.queryDelay):
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-	return nil, m.queryError
-}
 
 func TestDatabaseCheck(t *testing.T) {
 	t.Run("NewDatabaseCheck", func(t *testing.T) {

@@ -12,11 +12,17 @@ import (
 type Manager struct {
 	checkers map[string]HealthChecker
 	strategy AggregationStrategy
-	cache    map[string]HealthResult
+	cache    map[string]cacheEntry
+	revision uint64
 	cacheTTL time.Duration
 	mu       sync.RWMutex
 	ready    bool
 	readyMu  sync.RWMutex
+}
+
+type cacheEntry struct {
+	result    HealthResult
+	expiresAt time.Time
 }
 
 // ManagerConfig contains configuration for the health manager
@@ -38,7 +44,7 @@ func NewManager(config ManagerConfig) *Manager {
 	return &Manager{
 		checkers: make(map[string]HealthChecker),
 		strategy: config.Strategy,
-		cache:    make(map[string]HealthResult),
+		cache:    make(map[string]cacheEntry),
 		cacheTTL: config.CacheTTL,
 		ready:    true, // Start as ready by default
 	}
@@ -51,11 +57,13 @@ func (m *Manager) RegisterChecker(checker HealthChecker) {
 
 	name := checker.Name()
 	if _, exists := m.checkers[name]; exists {
-		logger.Warn(context.Background(), "Health checker with name already exists, overwriting", "name", name)
+		logger.WarnKV(context.Background(), "Health checker with name already exists, overwriting", "name", name)
 	}
 
 	m.checkers[name] = checker
-	logger.Debug(context.Background(), "Registered health checker", "name", name)
+	delete(m.cache, name)
+	m.revision++
+	logger.DebugKV(context.Background(), "Registered health checker", "name", name)
 }
 
 // RegisterCheckers registers multiple health checkers
@@ -71,13 +79,15 @@ func (m *Manager) UnregisterChecker(name string) {
 	defer m.mu.Unlock()
 
 	delete(m.checkers, name)
+	m.revision++
 	delete(m.cache, name)
-	logger.Debug(context.Background(), "Unregistered health checker", "name", name)
+	logger.DebugKV(context.Background(), "Unregistered health checker", "name", name)
 }
 
 // CheckAll runs all registered health checks
 func (m *Manager) CheckAll(ctx context.Context) map[string]HealthResult {
 	m.mu.RLock()
+	revision := m.revision
 	checkers := make(map[string]HealthChecker, len(m.checkers))
 	for name, checker := range m.checkers {
 		checkers[name] = checker
@@ -93,9 +103,7 @@ func (m *Manager) CheckAll(ctx context.Context) map[string]HealthResult {
 		go func(name string, checker HealthChecker) {
 			defer wg.Done()
 
-			start := time.Now()
-			result := m.checkWithCache(ctx, name, checker)
-			result = result.WithDuration(time.Since(start))
+			result := m.checkWithCache(ctx, name, checker, revision)
 
 			resultsMu.Lock()
 			results[name] = result
@@ -108,27 +116,55 @@ func (m *Manager) CheckAll(ctx context.Context) map[string]HealthResult {
 }
 
 // checkWithCache checks a single health checker with caching
-func (m *Manager) checkWithCache(ctx context.Context, name string, checker HealthChecker) HealthResult {
+func (m *Manager) checkWithCache(ctx context.Context, name string, checker HealthChecker, revision uint64) HealthResult {
 	m.mu.RLock()
 	cached, exists := m.cache[name]
+	current := m.revision == revision
 	m.mu.RUnlock()
-
-	if exists && time.Since(time.Now().Add(-cached.Duration)) < m.cacheTTL {
-		return cached
+	if current && exists && time.Now().Before(cached.expiresAt) {
+		return cloneResult(cached.result)
 	}
-
-	result := checker.Check(ctx)
-
+	start := time.Now()
+	result := runHealthCheck(ctx, checker).WithDuration(time.Since(start))
 	m.mu.Lock()
-	m.cache[name] = result
+	// A replacement/removal/ClearCache during this check must not republish old results.
+	if m.revision == revision && ctx.Err() == nil {
+		m.cache[name] = cacheEntry{result: cloneResult(result), expiresAt: time.Now().Add(m.cacheTTL)}
+	}
 	m.mu.Unlock()
+	return cloneResult(result)
+}
 
+func runHealthCheck(ctx context.Context, checker HealthChecker) (result HealthResult) {
+	defer func() {
+		if recover() != nil {
+			result = NewUnhealthyResult("panic during health check")
+		}
+	}()
+	return checker.Check(ctx)
+}
+
+// Copy the top-level details map so WithDetails on a returned result cannot modify the cache.
+// Checker-owned nested values must be immutable while results are in use.
+func cloneResult(result HealthResult) HealthResult {
+	if result.Details != nil {
+		details := make(map[string]interface{}, len(result.Details))
+		for key, value := range result.Details {
+			details[key] = value
+		}
+		result.Details = details
+	}
 	return result
 }
 
 // GetOverallStatus returns the aggregated health status
 func (m *Manager) GetOverallStatus(ctx context.Context) HealthStatus {
 	results := m.CheckAll(ctx)
+	return m.Aggregate(results)
+}
+
+// Aggregate computes status from one already collected snapshot, without executing checks again.
+func (m *Manager) Aggregate(results map[string]HealthResult) HealthStatus {
 	return m.strategy.Aggregate(results)
 }
 
@@ -146,7 +182,7 @@ func (m *Manager) SetReady(ready bool) {
 
 	if m.ready != ready {
 		m.ready = ready
-		logger.Info(context.Background(), "Application readiness changed", "ready", ready)
+		logger.InfoKV(context.Background(), "Application readiness changed", "ready", ready)
 	}
 }
 
@@ -167,6 +203,7 @@ func (m *Manager) ClearCache() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.cache = make(map[string]HealthResult)
-	logger.Debug(context.Background(), "Health check cache cleared")
+	m.cache = make(map[string]cacheEntry)
+	m.revision++
+	logger.DebugKV(context.Background(), "Health check cache cleared")
 }

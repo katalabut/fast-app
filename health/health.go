@@ -172,6 +172,12 @@ func (c *customCheck) Name() string {
 	return c.name
 }
 
-func (c *customCheck) Check(ctx context.Context) HealthResult {
+// Check recovers panics as unhealthy; the callback must cooperate with cancellation.
+func (c *customCheck) Check(ctx context.Context) (result HealthResult) {
+	defer func() {
+		if recover() != nil {
+			result = NewUnhealthyResult("panic during health check")
+		}
+	}()
 	return c.checkFn(ctx)
 }

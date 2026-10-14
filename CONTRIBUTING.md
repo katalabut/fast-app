@@ -27,7 +27,7 @@ Pull requests are the best way to propose changes to the codebase. We actively w
 
 ### Prerequisites
 
-- Go 1.21 or higher
+- Go 1.23.6 or higher
 - Git
 
 ### Setup

@@ -4,9 +4,8 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	_ "net/http/pprof" // Register pprof handlers
+	"sync/atomic"
 	"time"
 
 	"github.com/katalabut/fast-app/config"
@@ -22,6 +21,9 @@ type ObservabilityService struct {
 	config        config.Observability
 	healthManager *health.Manager
 	server        *http.Server
+	started       atomic.Bool
+	pprofEnabled  bool
+	redactDetails bool
 }
 
 // NewObservabilityService creates a new observability service with the given configuration.
@@ -33,10 +35,12 @@ func NewObservabilityService(cfg config.Observability, healthManager *health.Man
 	return &ObservabilityService{
 		config:        cfg,
 		healthManager: healthManager,
+		server:        &http.Server{Addr: httpAddress("", cfg.Port), ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 120 * time.Second},
 	}
 }
 
-// Run starts the observability HTTP server and blocks until the context is cancelled.
+// Run starts the observability server once and waits for Shutdown to stop it.
+// Cancellation before startup prevents listening. Call Shutdown concurrently to drain active requests.
 func (s *ObservabilityService) Run(ctx context.Context) error {
 	if !s.config.Enabled {
 		logger.Info(ctx, "Observability server is disabled")
@@ -44,31 +48,17 @@ func (s *ObservabilityService) Run(ctx context.Context) error {
 		return nil
 	}
 
-	mux := http.NewServeMux()
-
-	// Register metrics endpoint
-	if s.config.Metrics.Enabled {
-		mux.Handle(s.config.Metrics.Path, promhttp.Handler())
-		logger.InfoKV(ctx, "Registered metrics endpoint", "path", s.config.Metrics.Path)
+	if ctx.Err() != nil {
+		return nil
 	}
-
-	// Register health check endpoints
-	if s.config.Health.Enabled {
-		s.registerHealthEndpoints(mux)
+	if !s.started.CompareAndSwap(false, true) {
+		return errors.New("observability service already started")
 	}
-
-	// Register debug endpoints (pprof is automatically registered via import)
-	if s.config.Debug.Enabled {
-		s.registerDebugEndpoints(mux)
+	mux, err := s.routes()
+	if err != nil {
+		return err
 	}
-
-	s.server = &http.Server{
-		Addr:         fmt.Sprintf(":%d", s.config.Port),
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
+	s.server.Handler = mux
 
 	logger.InfoKV(ctx, "Starting observability server",
 		"address", s.server.Addr,
@@ -82,6 +72,34 @@ func (s *ObservabilityService) Run(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *ObservabilityService) routes() (*http.ServeMux, error) {
+	if err := s.config.ValidateWithPprof(s.pprofEnabled); err != nil {
+		return nil, err
+	}
+	if s.config.Health.Enabled && s.healthManager == nil {
+		return nil, errors.New("health manager is required")
+	}
+	mux := http.NewServeMux()
+
+	// Register metrics endpoint
+	if s.config.Metrics.Enabled {
+		mux.Handle(s.config.Metrics.Path, promhttp.Handler())
+		logger.InfoKV(context.Background(), "Registered metrics endpoint", "path", s.config.Metrics.Path)
+	}
+
+	// Register health check endpoints
+	if s.config.Health.Enabled {
+		s.registerHealthEndpoints(mux)
+	}
+
+	// Register only explicitly opted-in or historically enabled custom-prefix pprof routes.
+	if s.config.Debug.Enabled {
+		s.registerDebugEndpoints(mux)
+	}
+
+	return mux, nil
 }
 
 // Shutdown gracefully stops the observability server within the given context timeout.
@@ -114,20 +132,9 @@ func (s *ObservabilityService) registerHealthEndpoints(mux *http.ServeMux) {
 
 // registerDebugEndpoints registers debug and profiling endpoints.
 func (s *ObservabilityService) registerDebugEndpoints(mux *http.ServeMux) {
-	// pprof endpoints are automatically registered via the import
-	// We just need to proxy them under our debug prefix if it's not the default
-	if s.config.Debug.PathPrefix != "/debug" {
-		// Redirect pprof endpoints to our custom prefix
-		mux.HandleFunc(s.config.Debug.PathPrefix+"/pprof/", func(w http.ResponseWriter, r *http.Request) {
-			// Remove our prefix and forward to default pprof handler
-			r.URL.Path = "/debug" + r.URL.Path[len(s.config.Debug.PathPrefix):]
-			http.DefaultServeMux.ServeHTTP(w, r)
-		})
+	if s.pprofEnabled || s.config.Debug.PathPrefix != "/debug" {
+		registerPprof(mux, s.config.Debug.PathPrefix)
 	}
-
-	logger.InfoKV(context.Background(), "Registered debug endpoints",
-		"path_prefix", s.config.Debug.PathPrefix,
-	)
 }
 
 // handleLiveness handles liveness probe requests.
@@ -139,7 +146,7 @@ func (s *ObservabilityService) handleLiveness(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // handleReadiness handles readiness probe requests.
@@ -165,7 +172,7 @@ func (s *ObservabilityService) handleReadiness(w http.ResponseWriter, r *http.Re
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
 
 // handleHealthChecks handles detailed health check requests.
@@ -174,13 +181,19 @@ func (s *ObservabilityService) handleHealthChecks(w http.ResponseWriter, r *http
 	defer cancel()
 
 	results := s.healthManager.CheckAll(ctx)
-	overallStatus := s.healthManager.GetOverallStatus(ctx)
+	overallStatus := s.healthManager.Aggregate(results)
+	if s.redactDetails {
+		for name, result := range results {
+			result.Details = nil
+			results[name] = result
+		}
+	}
 
 	response := map[string]interface{}{
-		"status":     overallStatus,
-		"timestamp":  time.Now().UTC().Format(time.RFC3339),
-		"checks":     results,
-		"ready":      s.healthManager.IsReady(),
+		"status":      overallStatus,
+		"timestamp":   time.Now().UTC().Format(time.RFC3339),
+		"checks":      results,
+		"ready":       s.healthManager.IsReady(),
 		"check_count": len(results),
 	}
 
@@ -191,5 +204,27 @@ func (s *ObservabilityService) handleHealthChecks(w http.ResponseWriter, r *http
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
+}
+
+// WithListenAddress changes the bind address before Run. The default remains :port.
+func (s *ObservabilityService) WithListenAddress(address string) *ObservabilityService {
+	s.server.Addr = address
+	return s
+}
+
+// WithPprof opts into working default-prefix pprof routes when Debug.Enabled is true.
+// It extends the write budget to 35 seconds to accommodate the default 30-second CPU profile.
+// Configure a private listen address before enabling diagnostic endpoints.
+func (s *ObservabilityService) WithPprof() *ObservabilityService {
+	s.pprofEnabled = true
+	s.server.WriteTimeout = 35 * time.Second
+	return s
+}
+
+// WithDetailsRedacted omits checker Details from HTTP responses; configure before Run.
+// Checker Message and Status remain public; callbacks must not put secrets in them.
+func (s *ObservabilityService) WithDetailsRedacted() *ObservabilityService {
+	s.redactDetails = true
+	return s
 }

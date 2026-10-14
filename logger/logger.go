@@ -57,15 +57,16 @@ func init() {
 // This should be called early in the application startup process.
 // The version will be included in all log entries.
 func InitLogger(cfg Config, version string) (*zap.SugaredLogger, error) {
-	globalVersion = version
-
 	lvl, err := zapLevelFromString(cfg.Level)
 	if err != nil {
 		return nil, fmt.Errorf("failed to unmurshal log level: %s; err: %v", cfg.Level, err)
 	}
 
-	logger := New(lvl, cfg)
-	SetLogger(logger)
+	logger := newLogger(lvl, cfg, version)
+	globalGuard.Lock()
+	globalVersion = version
+	global = logger
+	globalGuard.Unlock()
 	return logger, nil
 }
 
@@ -77,6 +78,13 @@ func zapLevelFromString(newLogLevel string) (zap.AtomicLevel, error) {
 
 // New creates new *zap.SugaredLogger with standard EncoderConfig
 func New(lvl zapcore.LevelEnabler, cfg Config, options ...zap.Option) *zap.SugaredLogger {
+	globalGuard.RLock()
+	version := globalVersion
+	globalGuard.RUnlock()
+	return newLogger(lvl, cfg, version, options...)
+}
+
+func newLogger(lvl zapcore.LevelEnabler, cfg Config, version string, options ...zap.Option) *zap.SugaredLogger {
 	if lvl == nil {
 		lvl = level
 	}
@@ -104,14 +112,14 @@ func New(lvl zapcore.LevelEnabler, cfg Config, options ...zap.Option) *zap.Sugar
 		encoder = zapcore.NewJSONEncoder(config)
 	}
 
-	return zap.New(zapcore.NewCore(encoder, sink, lvl), options...).With(getZapFields(cfg)...).Sugar()
+	return zap.New(zapcore.NewCore(encoder, sink, lvl), options...).With(getZapFields(cfg, version)...).Sugar()
 }
 
-func getZapFields(config Config) []zapcore.Field {
+func getZapFields(config Config, version string) []zapcore.Field {
 	var fields []zapcore.Field
 
-	if globalVersion != "" {
-		fields = append(fields, zap.String("version", globalVersion))
+	if version != "" {
+		fields = append(fields, zap.String("version", version))
 	}
 
 	if config.AppName != "" {
@@ -128,7 +136,7 @@ func Logger() *zap.SugaredLogger {
 	return global
 }
 
-// SetLogger sets global used logger. This function is not thread-safe.
+// SetLogger atomically replaces the global logger. Logger instances themselves are concurrency-safe.
 func SetLogger(l *zap.SugaredLogger) {
 	globalGuard.Lock()
 	defer globalGuard.Unlock()

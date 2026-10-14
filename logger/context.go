@@ -20,7 +20,7 @@ func ToContext(ctx context.Context, l *zap.SugaredLogger) context.Context {
 
 // ContextWithKV returns new context with specified logger with field
 func ContextWithKV(ctx context.Context, kvs ...interface{}) context.Context {
-	l := FromContext(ctx).Desugar()
+	l := contextLogger(ctx).Desugar()
 	result := make([]zap.Field, 0, len(kvs)/2)
 	for i := 0; i < len(kvs); i += 2 {
 		if i == len(kvs)-1 {
@@ -35,44 +35,30 @@ func ContextWithKV(ctx context.Context, kvs ...interface{}) context.Context {
 		}
 		result = append(result, zap.Any(key, kvs[i+1]))
 	}
-	l.With(result...)
 
 	return ToContext(ctx, l.With(result...).Sugar())
 }
 
 func ContextWithTags(ctx context.Context, tags ...string) context.Context {
-	if v, ok := ctx.Value(loggerContextTags).([]string); ok {
-		tags = append(v, tags...)
-	}
-
-	return context.WithValue(ctx, loggerContextTags, tags)
+	previous, _ := ctx.Value(loggerContextTags).([]string)
+	combined := append([]string(nil), previous...)
+	combined = append(combined, tags...)
+	return context.WithValue(ctx, loggerContextTags, combined)
 }
 
-// FromContext returns logger from context if set. Otherwise returns global `global` logger.
-// In both cases returned logger is populated with `trace_id` & `span_id`.
+// FromContext returns a context logger, or the synchronized global logger, enriched with context tags.
+// Trace/span fields must be provided explicitly through ContextWithKV.
 func FromContext(ctx context.Context) *zap.SugaredLogger {
-	l := global
-
-	if logger, ok := ctx.Value(loggerContextKey).(*zap.SugaredLogger); ok {
-		l = logger
+	l := contextLogger(ctx)
+	if tags, ok := ctx.Value(loggerContextTags).([]string); ok && len(tags) > 0 {
+		l = l.With("tags", tags)
 	}
-
-	//if span, ok := tracer.SpanFromContext(ctx); ok {
-	//	if span.Context() != nil {
-	//		l = withTraceID(l, span.Context().TraceID())
-	//		l = withSpanID(l, span.Context().SpanID())
-	//	}
-	//}
-
 	return l
 }
 
-func withTraceID(l *zap.SugaredLogger, traceId uint64) *zap.SugaredLogger {
-	log := l.With(zap.Uint64("trace_id", traceId))
-	return log
-}
-
-func withSpanID(l *zap.SugaredLogger, spanId uint64) *zap.SugaredLogger {
-	log := l.With(zap.Uint64("span_id", spanId))
-	return log
+func contextLogger(ctx context.Context) *zap.SugaredLogger {
+	if l, ok := ctx.Value(loggerContextKey).(*zap.SugaredLogger); ok && l != nil {
+		return l
+	}
+	return Logger()
 }
